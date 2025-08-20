@@ -46,14 +46,14 @@ spectral_analyzer = SpectralAnalyzer(loader=loader, trigger_detector=detector)
 spectral_analyzer.analyze_comprehensive()  # Multi-band + spectral parameterization
 
 # Option 2: Graph-based connectivity analysis (NEW)
-connectivity_analyzer = ConnectivityAnalyzer(edf_loader=loader, window_step_ratio=1.0)
+connectivity_analyzer = ConnectivityAnalyzer(edf_loader=loader)
 
 # Level 1: Quick exploration
-connectivity_analyzer.compute_correlation(start_time=0, stop_time=300, interval_seconds=30)
-connectivity_analyzer.compute_coherence_average(start_time=0, stop_time=300, interval_seconds=30)
+connectivity_analyzer.compute_correlation(start_time=0, stop_time=300, interval=30)
+connectivity_analyzer.compute_coherence_average(start_time=0, stop_time=300, interval=30)
 
 # Level 2: Detailed analysis  
-connectivity_analyzer.compute_coherence_bands(start_time=0, stop_time=300, interval_seconds=10)
+connectivity_analyzer.compute_coherence_bands(start_time=0, stop_time=300, interval=10)
 
 # Plot results
 connectivity_analyzer.plot_connectivity_matrices()
@@ -101,16 +101,17 @@ loader = EDFLoader(folder_path, name)
 ```
 
 **Parameters:**
-- `folder_path` (str): Base directory containing subject folders
-- `name` (str): Subject name (must match folder and file name)
+- `folder_path` (str): Base directory where the EDF file is stored
+- `name` (str): Name of the subject or experiment (the EDF file should match this name)
 
 #### Methods
 
 ##### `inspect_data()`
-Displays comprehensive file information including:
+Inspects the EDF file for the specified subject, printing out various signal information including:
 - File header details
 - Number of signals and their properties
 - Sample rates and signal ranges
+- Physical and digital maximum/minimum values
 - First 10 samples of each channel
 
 ```python
@@ -118,13 +119,13 @@ loader.inspect_data()
 ```
 
 ##### `load_and_plot_signals(signal_indices=None, duration=None, save_plots=False, save_path=None)`
-Loads and visualizes EEG signals with flexible options.
+Loads and plots the signals from the EDF file, storing them along with their sample rates in a dictionary.
 
 **Parameters:**
-- `signal_indices` (list, optional): Specific channel indices to load (default: all channels)
-- `duration` (float, optional): Duration in seconds to load (default: entire file)
-- `save_plots` (bool): Save plots instead of displaying (default: False)
-- `save_path` (str, optional): Custom save directory (default: `plots/{subject_name}`)
+- `signal_indices` (list of int, optional): Specific signal indices to load (None = load all signals)
+- `duration` (float, optional): Duration in seconds to plot (None = entire duration)
+- `save_plots` (bool, optional): Whether to save plots instead of showing them (default: False)
+- `save_path` (str, optional): Directory to save plots (default: plots/{subject_name})
 
 **Examples:**
 ```python
@@ -140,11 +141,13 @@ loader.load_and_plot_signals(duration=1200.0, save_plots=True, save_path="custom
 
 **Output:**
 - Time-series plots with time axis in seconds
-- Saved to `plots/{subject_name}/signals_plot.png` (if save_plots=True)
+- Signals stored in `signals_dict` attribute with data and sample rates
+- Plots saved to `plots/{subject_name}/signals_plot.png` (if save_plots=True)
+- Warning message displayed when loading all signals due to potential memory usage
 
 ### TriggerDetector
 
-Detects triggers and analyzes inter-trigger windows.
+Detects triggers and analyzes inter-trigger windows using amplitude thresholding and machine learning-based quality filtering.
 
 #### Initialization
 ```python
@@ -152,18 +155,31 @@ detector = TriggerDetector(edf_loader, signal_choice)
 ```
 
 **Parameters:**
-- `edf_loader` (EDFLoader): Initialized EDFLoader instance
-- `signal_choice` (str): Channel name for trigger detection (e.g., 'T2', 'O1')
+- `edf_loader` (EDFLoader): An instance of the EDFLoader class that contains the signal data
+- `signal_choice` (str): The key corresponding to the desired signal in the EDFLoader's signals_dict (e.g., 'T2', 'O1')
 
 #### Methods
 
+##### `butterworth_filter(signal, cutoff=30, order=5, btype='low')`
+Applies a Butterworth filter to the signal.
+
+**Parameters:**
+- `signal` (numpy.ndarray): The input signal data to filter
+- `cutoff` (float): The cutoff frequency in Hz (default: 30)
+- `order` (int): The order of the filter (default: 5)
+- `btype` (str): The type of the filter ('low', 'high', 'bandpass', 'bandstop') (default: 'low')
+
+**Returns:** numpy.ndarray - The filtered signal
+
 ##### `detect_triggers()`
-Detects trigger events using amplitude thresholding.
+Detects triggers in the signal based on a threshold and filters events to be between 55 seconds and 62 seconds long.
 
 **Algorithm:**
-1. Rectifies and filters the signal (Butterworth low-pass, 30 Hz cutoff)
-2. Applies amplitude threshold (60 µV)
-3. Filters events by duration (52-65 seconds)
+1. Rectifies the signal using absolute value
+2. Applies Butterworth low-pass filter (30 Hz cutoff, order 5)
+3. Detects events above hardcoded threshold (60 µV)
+4. Filters events by duration (52-65 seconds, corresponding to 55-62 second range)
+5. Handles edge cases for events at signal boundaries
 
 ```python
 detector.detect_triggers()
@@ -173,18 +189,21 @@ print(f"Found {len(detector.df_triggers)} triggers")
 **Output:**
 - `df_triggers` DataFrame with columns:
   - `start_index`, `end_index`: Sample indices
+  - `duration_samples`: Duration in samples
   - `start_time (s)`, `end_time (s)`: Time in seconds
-  - `duration_time (s)`: Trigger duration
+  - `duration_time (s)`: Trigger duration in seconds
 
 ##### `plot_triggers()`
-Visualizes detected triggers overlaid on the filtered signal.
+Plots the filtered signal with detected trigger periods highlighted.
 
 ```python
 detector.plot_triggers()
 ```
 
+**Output:** Interactive matplotlib plot showing filtered signal with red highlighted trigger periods
+
 ##### `save_triggers()`
-Saves trigger information to CSV file.
+Saves the DataFrame of detected triggers to a CSV file.
 
 ```python
 detector.save_triggers()
@@ -193,28 +212,31 @@ detector.save_triggers()
 **Output:** `{subject_folder}/triggers.csv`
 
 ##### `plot_windows()`
-Generates individual plots for each inter-trigger window.
+Generates individual plots for each inter-trigger window (signal segments between consecutive triggers).
 
 ```python
 detector.plot_windows()
 ```
 
-**Output:** `{subject_folder}/window plots/plot_{i}.png`
+**Output:** `{subject_folder}/window plots/plot_{i}.png` - Individual plots for each window with time in minutes and amplitude range 0-300
 
 ##### `convert_to_video()`
-Creates MP4 video from window plots for rapid review.
+Creates MP4 video from window plots for rapid review, sorted numerically by plot index.
 
 ```python
 detector.convert_to_video()
 ```
 
-**Output:** `{subject_folder}/trigger.mp4`
+**Output:** `{subject_folder}/trigger.mp4` - Video at 10 fps showing all window plots in sequence
 
 ##### `filter_bad_windows(clf_path=None, classes_path=None)`
-ML-based filtering of poor-quality windows using ResNet-50 + logistic regression.
+Uses ResNet-50 + logistic regression pipeline to drop triggers whose adjoining window plots are classified as 'bad'. Automatically uses built-in models when no custom paths are provided.
+
+**Important:** Call after `plot_windows()` to ensure window plots exist for classification.
 
 ```python
 # Use built-in models (recommended)
+detector.plot_windows()
 detector.filter_bad_windows()
 
 # Or use custom models
@@ -225,8 +247,10 @@ detector.filter_bad_windows(
 ```
 
 **Parameters:**
-- `clf_path` (str, optional): Path to custom classifier (.pkl file). Uses built-in model if None.
-- `classes_path` (str, optional): Path to custom class labels (.npy file). Uses built-in model if None.
+- `clf_path` (str, optional): Path to custom classifier (.pkl file). Uses built-in model from package resources if None
+- `classes_path` (str, optional): Path to custom class labels (.npy file). Uses built-in classes from package resources if None
+
+**Output:** Overwrites `{subject_folder}/triggers.csv` with filtered results, removing triggers adjacent to windows classified as 'bad'
 
 
 
@@ -262,10 +286,10 @@ analyzer = SpectralAnalyzer(
 ```
 
 **Parameters:**
-- `loader` (EDFLoader): Loaded EEG data instance
-- `trigger_detector` (TriggerDetector): For temporal segmentation (required for multi-band analysis)
-- `target_length` (int): Resampled points per segment for temporal aggregation
-- `output_dir` (str, optional): Custom output directory path
+- `loader` (EDFLoader): Configured EDFLoader instance containing loaded EEG signals. Must have signals loaded via load_and_plot_signals() method.
+- `trigger_detector` (TriggerDetector, optional): TriggerDetector instance for event-based signal segmentation. Required for multi-band power analysis with temporal segmentation.
+- `target_length` (int, default=50): Number of resampled points per segment for temporal aggregation. Controls the resolution of time-series outputs.
+- `output_dir` (str, optional): Output directory path for analysis results. If None, defaults to 'spectral_analysis_results' subdirectory in the same directory as the EDF file.
 
 #### Methods
 
@@ -380,11 +404,34 @@ analyzer.set_fooof_parameters(
 
 ##### `set_smoothing_windows(window_secs_list)`
 
-Configure temporal smoothing parameters for multi-band analysis.
+Configure temporal smoothing parameters for multi-band power analysis.
+
+**Parameters:**
+- `window_secs_list` (list of float): Moving-average window sizes in seconds. Multiple windows enable comparison of different temporal smoothing scales.
+
+**Notes:**
+- Shorter windows preserve temporal dynamics but may be noisier
+- Longer windows provide smoother estimates but reduce temporal resolution
+- Window sizes are automatically converted to samples based on signal sampling frequency during analysis
 
 ```python
 # Custom smoothing windows
 analyzer.set_smoothing_windows([0.05, 0.1, 0.25])  # 50ms, 100ms, 250ms
+```
+
+##### `get_analysis_info()`
+
+Retrieve comprehensive analysis configuration and system information for documentation and reproducibility purposes.
+
+**Returns:**
+- `dict`: Configuration dictionary containing channels, frequency bands, smoothing windows, FOOOF settings, library information, and trigger detector status.
+
+```python
+# Get current analyzer configuration
+config = analyzer.get_analysis_info()
+print(f"Available channels: {config['channels']}")
+print(f"Frequency bands: {config['frequency_bands']}")
+print(f"Library: {config['spectral_param_library']['library']}")
 ```
 
 #### Visualization Methods
@@ -393,14 +440,29 @@ analyzer.set_smoothing_windows([0.05, 0.1, 0.25])  # 50ms, 100ms, 250ms
 
 Generate publication-ready visualization of raw EEG data for specified trigger-defined window.
 
+**Parameters:**
+- `window_index` (int): Zero-based index of the trigger-defined window to visualize. Must be less than (total_triggers - 1) to ensure valid window bounds.
+- `channel` (str): EEG channel name to plot. Must exist in loaded dataset.
+
+**Raises:**
+- `ValueError`: If trigger detector is not provided or window_index is out of range.
+
 ```python
 # Plot specific window
 analyzer.plot_raw_signal_window(window_index=5, channel='T2')
 ```
 
-##### `plot_averaged_signal_window(channel, start_window=None, end_window=None, target_length=500, aggregation_method='mean')`
+##### `plot_averaged_signal_window(channel, start_window=None, end_window=None, target_length=500, aggregation_method='mean', trim_ratio=0.1)`
 
 Create ensemble-averaged signal visualization across multiple temporal windows with robust statistical aggregation.
+
+**Parameters:**
+- `channel` (str): EEG channel name to analyze and visualize
+- `start_window` (int, optional): Starting window index for aggregation. If None, uses first window (0)
+- `end_window` (int, optional): Ending window index for aggregation. If None, uses last available window
+- `target_length` (int, default=500): Number of temporal points for signal resampling and standardization
+- `aggregation_method` ({'mean', 'median', 'trimmed'}, default='mean'): Statistical method for cross-window aggregation
+- `trim_ratio` (float, default=0.1): Proportion of extreme values to exclude for 'trimmed' aggregation method
 
 ```python
 # Plot averaged signal across windows 10-20
@@ -410,11 +472,31 @@ analyzer.plot_averaged_signal_window(
     end_window=20,
     aggregation_method='median'
 )
+
+# Plot with trimmed mean aggregation
+analyzer.plot_averaged_signal_window(
+    channel='T2',
+    aggregation_method='trimmed',
+    trim_ratio=0.2
+)
 ```
 
 ##### `plot_fooof_comparison(channels=None, metric='aperiodic_exponent')`
 
 Generate comparative visualization of spectral parameterization metrics across channels.
+
+**Parameters:**
+- `channels` (list of str, optional): EEG channel names to include in comparison. If None, includes all channels with completed spectral parameterization analysis.
+- `metric` ({'aperiodic_exponent', 'aperiodic_offset', 'n_peaks', 'r_squared', 'error'}, default='aperiodic_exponent'): Spectral parameterization metric to visualize:
+  - 'aperiodic_exponent': 1/f slope reflecting neural population dynamics
+  - 'aperiodic_offset': Broadband power offset parameter
+  - 'n_peaks': Number of detected oscillatory peaks
+  - 'r_squared': Model fit quality (coefficient of determination)
+  - 'error': Root mean square error of model fit
+
+**Notes:**
+- Requires prior execution of analyze_spectral_parameterization() method
+- Visualization includes professional formatting with grid lines, proper axis labels, and publication-ready styling
 
 ```python
 # Compare aperiodic exponents across channels
@@ -422,6 +504,9 @@ analyzer.plot_fooof_comparison(
     channels=['T2', 'O1', 'F3'],
     metric='aperiodic_exponent'
 )
+
+# Compare number of peaks across all analyzed channels
+analyzer.plot_fooof_comparison(metric='n_peaks')
 ```
 
 #### Complete Analysis Example
@@ -435,12 +520,12 @@ loader.load_and_plot_signals()
 
 trigger_detector = TriggerDetector(edf_loader=loader, signal_choice='T2')
 trigger_detector.detect_triggers()
+trigger_detector.plot_triggers()
 
 # Step 2: Initialize analyzer
 analyzer = SpectralAnalyzer(
     loader=loader,
-    trigger_detector=trigger_detector,
-    target_length=50
+    trigger_detector=trigger_detector
 )
 
 # Step 3: Configure analysis parameters
@@ -744,20 +829,17 @@ from krembil_kit import EDFLoader, ConnectivityAnalyzer
 loader = EDFLoader("data", "subject_name")
 loader.load_and_plot_signals(duration=1200.0)
 
-# Initialize processor with no overlap for speed
-processor = ConnectivityAnalyzer(
-    edf_loader=loader,
-    window_step_ratio=1.0  # No overlap = faster processing
-)
+# Initialize processor
+processor = ConnectivityAnalyzer(edf_loader=loader)
 
 # Quick correlation overview (5-minute windows)
 corr_path = processor.compute_correlation(
-    start_time=0, stop_time=3600, interval_seconds=300
+    start_time=0, stop_time=3600, interval=300
 )
 
 # Quick coherence overview
 coh_path = processor.compute_coherence_average(
-    start_time=0, stop_time=3600, interval_seconds=300
+    start_time=0, stop_time=3600, interval=300
 )
 
 # Generate overview plots
@@ -774,19 +856,16 @@ processor.plot_connectivity_matrices(
 # Focus on specific time ranges with higher resolution
 
 # High-resolution analysis of interesting periods
-processor_detailed = ConnectivityAnalyzer(
-    edf_loader=loader,
-    window_step_ratio=0.5  # 50% overlap for better resolution
-)
+processor_detailed = ConnectivityAnalyzer(edf_loader=loader)
 
 # Detailed correlation analysis (10-second windows)
 detailed_corr = processor_detailed.compute_correlation(
-    start_time=100, stop_time=400, interval_seconds=10, overlap_ratio=0.5
+    start_time=100, stop_time=400, interval=10, overlap_ratio=0.5
 )
 
 # Frequency-specific coherence analysis
 detailed_coh = processor_detailed.compute_coherence_bands(
-    start_time=100, stop_time=400, interval_seconds=10, overlap_ratio=0.5
+    start_time=100, stop_time=400, interval=10, overlap_ratio=0.5
 )
 
 # Generate detailed visualizations
@@ -804,11 +883,10 @@ processor_detailed.plot_connectivity_matrices(
 
 # Memory-safe graph generation for any file size
 processor_advanced = ConnectivityAnalyzer(
-    edf_loader=loader,
-    window_step_ratio=0.125  # High temporal resolution
+    edf_loader=loader
 )
-hdf5_path = processor_advanced.generate_graphs_from_edf(
-    segment_duration_minutes=3.0
+hdf5_path = processor_advanced.generate_graphs(
+    segment_duration=180.0
 )
 
 # Load and analyze HDF5 results
@@ -846,7 +924,7 @@ with h5py.File(hdf5_path, 'r') as f:
 - ✅ Clinical applications requiring band-specific analysis
 - ✅ Research into frequency-specific network dynamics
 
-**Use `generate_graphs_from_edf()` when:**
+**Use `generate_graphs()` when:**
 - ✅ Machine learning applications (GNNs, classification)
 - ✅ Complex network analysis requiring multiple connectivity measures
 - ✅ Research requiring high temporal resolution connectivity tracking
@@ -866,7 +944,7 @@ loader = EDFLoader("data", "subject_name")
 loader.load_and_plot_signals(duration=3600.0)  # 1 hour
 
 # Step 1: Quick exploration (Level 1)
-explorer = ConnectivityAnalyzer(edf_loader=loader, window_step_ratio=1.0)
+explorer = ConnectivityAnalyzer(edf_loader=loader)
 
 # Overview analysis
 corr_overview = explorer.compute_correlation(0, 3600, 300)  # 5-min windows
@@ -883,7 +961,7 @@ explorer.plot_connectivity_matrices(
 interesting_start, interesting_stop = 1200, 1800  # Example: 20-30 minutes
 
 # Step 3: Detailed analysis of interesting period (Level 2)
-detailed = ConnectivityAnalyzer(edf_loader=loader, window_step_ratio=0.5)
+detailed = ConnectivityAnalyzer(edf_loader=loader)
 
 detailed_corr = detailed.compute_correlation(
     interesting_start, interesting_stop, 30, overlap_ratio=0.5
@@ -894,8 +972,8 @@ detailed_coh = detailed.compute_coherence_bands(
 
 # Step 4: Full graph analysis for ML (Level 3)
 # Memory-safe HDF5 processing
-advanced = ConnectivityAnalyzer(edf_loader=loader, window_step_ratio=0.125)
-hdf5_path = advanced.generate_graphs_from_edf(segment_duration_minutes=5.0)
+advanced = ConnectivityAnalyzer(edf_loader=loader)
+hdf5_path = advanced.generate_graphs(segment_duration=300.0)
 
 # Step 5: Load and analyze results
 with h5py.File(hdf5_path, 'r') as f:
@@ -1036,20 +1114,16 @@ spectral_analyzer.plot_fooof_comparison(channels=['T6', 'T2'], metric='n_peaks')
 - Enable `save_plots=True` to avoid memory issues with display
 
 **For Graph Processing:**
-- **Any file size**: `generate_graphs_from_edf()` uses memory-safe HDF5 processing
+- **Any file size**: `generate_graphs()` uses memory-safe HDF5 processing
 - **Adjust segment size**: Smaller segments use less memory but have more boundary losses
-- **Control temporal resolution**: Higher `window_step_ratio` = less memory usage
 
 ```python
 # Memory-efficient settings for large files
-processor = ConnectivityAnalyzer(
-    edf_loader=loader,
-    window_step_ratio=1.0  # No overlap = 8x less memory
-)
+processor = ConnectivityAnalyzer(edf_loader=loader)
 
 # Process in small segments for maximum memory efficiency
-hdf5_path = processor.generate_graphs_from_edf(
-    segment_duration_minutes=2.0  # Smaller segments = less memory
+hdf5_path = processor.generate_graphs(
+    segment_duration=120.0  # Smaller segments = less memory
 )
 ```
 
@@ -1062,18 +1136,18 @@ The trigger detection uses hardcoded parameters optimized for trigger detection:
 
 ### Temporal Resolution vs Performance Trade-offs
 
-**Window Step Ratio Impact:**
+**Overlap Ratio Impact:**
 ```python
 # High resolution, high computational cost
-processor = ConnectivityAnalyzer(window_step_ratio=0.125)  # 87.5% overlap
+hdf5_path = processor.generate_graphs(overlap_ratio=0.875)  # 87.5% overlap
 # Result: 8x more windows, 8x longer processing, 8x more storage
 
 # Moderate resolution, balanced performance  
-processor = ConnectivityAnalyzer(window_step_ratio=0.5)   # 50% overlap
+hdf5_path = processor.generate_graphs(overlap_ratio=0.5)   # 50% overlap
 # Result: 2x more windows, 2x longer processing
 
 # Low resolution, fast processing
-processor = ConnectivityAnalyzer(window_step_ratio=1.0)   # No overlap
+hdf5_path = processor.generate_graphs(overlap_ratio=0.0)   # No overlap
 # Result: Fastest processing, lowest memory usage
 ```
 
@@ -1106,8 +1180,8 @@ For automated window quality assessment:
 ### Production Deployment Considerations
 
 **For Large-Scale Processing:**
-- Use `generate_graphs_from_edf()` for reliability and memory safety with HDF5 storage
-- Set appropriate `segment_duration_minutes` based on available RAM
+- Use `generate_graphs()` for reliability and memory safety with HDF5 storage
+- Set appropriate `segment_duration` based on available RAM
 - Monitor disk space - HDF5 files can be large but are compressed
 - Use progress tracking to monitor long-running jobs
 - Consider processing multiple files in parallel with separate processes
@@ -1124,6 +1198,7 @@ For automated window quality assessment:
 - mne
 - pyedflib
 - matplotlib
+- seaborn
 - pandas
 - opencv-python
 - torch
@@ -1131,9 +1206,10 @@ For automated window quality assessment:
 - joblib
 - scikit-learn
 - Pillow
-- specparam (with fooof fallback)
-- h5py (for HDF5 graph storage)
-- tqdm (for progress tracking)
+- specparam
+- fooof
+- h5py
+- tqdm
 
 ## Requirements
 
