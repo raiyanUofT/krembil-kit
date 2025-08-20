@@ -1,0 +1,8 @@
+include README.md
+include LICENSE
+include pyproject.toml
+recursive-include src/krembil_kit *.pkl *.npy
+exclude src/krembil_kit/*.ipynb
+exclude src/krembil_kit/__pycache__/*
+global-exclude *.pyc
+global-exclude __pycache__

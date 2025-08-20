@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "krembil-kit"
+version = "1.0.0"
+description = "Comprehensive EEG analysis pipeline with advanced spectral analysis, connectivity analysis, memory-safe HDF5 graph processing, trigger detection, and spectral parameterization (FOOOF/SpecParam)"
+readme = "README.md"
+license-files = ["LICENSE"]
+authors = [{ name = "Raiyan", email = "raiyan0511@gmail.com" }]
+maintainers = [{ name = "Raiyan", email = "raiyan0511@gmail.com" }]
+requires-python = ">=3.7"
+keywords = ["eeg", "signal-processing", "neuroscience", "spectral-analysis", "connectivity-analysis", "graph-analysis", "coherence", "correlation", "fooof", "specparam", "spectral-parameterization", "aperiodic", "oscillations", "hdf5", "memory-safe", "large-files", "multi-band", "frequency-bands"]
+dependencies = [
+  "numpy",
+  "scipy",
+  "mne",
+  "pyedflib",
+  "matplotlib",
+  "seaborn",
+  "pandas",
+  "opencv-python",
+  "torch",
+  "torchvision",
+  "joblib",
+  "scikit-learn",
+  "Pillow",
+  "specparam",
+  "fooof",
+  "h5py",
+  "tqdm"
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Healthcare Industry",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.7",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Medical Science Apps.",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Operating System :: OS Independent"
+]
+
+[project.urls]
+Homepage = "https://github.com/raiyanUofT/krembil-kit"
+Repository = "https://github.com/raiyanUofT/krembil-kit"
+Issues = "https://github.com/raiyanUofT/krembil-kit/issues"
+Documentation = "https://github.com/raiyanUofT/krembil-kit#readme"
+
+[project.optional-dependencies]
+dev = [
+  "build",
+  "twine",
+  "bump2version"
+]
+
+[tool.setuptools.package-data]
+"krembil_kit" = ["*.pkl", "*.npy"]
