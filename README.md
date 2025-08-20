@@ -18,7 +18,7 @@ This package provides a complete pipeline for analyzing EEG data stored in Europ
 - **Memory-Safe Processing**: HDF5-based analysis for large EEG files with bounded memory usage
 - **Professional Organization**: Structured output directories with consistent naming conventions
 - **Analysis Metadata**: Complete tracking of analysis parameters, timing, and results
-- **Professional Visualizations**: Publication-ready plots and comprehensive analysis reports
+- **Visualizations**: Plots and comprehensive analysis reports
 - **ML Integration**: Optional machine learning-based window quality filtering
 
 ## Installation
@@ -41,26 +41,26 @@ detector = TriggerDetector(loader, 'T2')
 detector.detect_triggers()
 detector.plot_triggers()
 
-# Option 1: Advanced spectral analysis (NEW)
+# Option 1: Advanced spectral analysis
 spectral_analyzer = SpectralAnalyzer(loader=loader, trigger_detector=detector)
 spectral_analyzer.analyze_comprehensive()  # Multi-band + spectral parameterization
 
-# Option 2: Graph-based connectivity analysis (NEW)
+# Option 2: Graph-based connectivity analysis
 connectivity_analyzer = ConnectivityAnalyzer(edf_loader=loader)
 
 # Level 1: Quick exploration
-connectivity_analyzer.compute_correlation(start_time=0, stop_time=300, interval=30)
+connectivity_analyzer.compute_correlation(start_time=0, stop_time=300, interval=10)
 connectivity_analyzer.compute_coherence_average(start_time=0, stop_time=300, interval=30)
 
 # Level 2: Detailed analysis  
-connectivity_analyzer.compute_coherence_bands(start_time=0, stop_time=300, interval=10)
+connectivity_analyzer.compute_coherence_bands(start_time=0, stop_time=300, interval=50)
 
 # Plot results
 connectivity_analyzer.plot_connectivity_matrices()
 
 # Level 3: Full graph representations
 # Memory-safe graph generation (works for any file size):
-hdf5_path = connectivity_analyzer.generate_graphs(segment_duration=60.0, overlap_ratio=0.875)
+hdf5_path = connectivity_analyzer.generate_graphs(segment_duration=60.0, overlap_ratio=0.125)
 ```
 
 ## Data Structure Requirements
@@ -69,13 +69,6 @@ hdf5_path = connectivity_analyzer.generate_graphs(segment_duration=60.0, overlap
 
 Your EDF files should be organized as follows:
 
-```
-data/
-└── subject_name/
-    └── subject_name.edf
-```
-
-**Example:**
 ```
 data/
 └── subject_name/
@@ -101,8 +94,22 @@ loader = EDFLoader(folder_path, name)
 ```
 
 **Parameters:**
-- `folder_path` (str): Base directory where the EDF file is stored
-- `name` (str): Name of the subject or experiment (the EDF file should match this name)
+- `folder_path` (str): Path to the data directory
+- `name` (str): Name of the subject or experiment (the EDF file will be under this subject directory, and should match this name)
+
+For example, if our data was in the current directory as below:
+
+```
+data/
+└── Sebastian/
+    └── Sebastian.edf
+```
+
+We would call (from the current directory):
+
+```python
+loader = EDFLoader("path/to/data/folder", "Sebastian")
+```
 
 #### Methods
 
@@ -784,39 +791,6 @@ results = processor.plot_connectivity_matrices(
 )
 ```
 
-**Output Structure:**
-```
-graph_representation/
-├── correlation/
-│   ├── data.pickle
-│   └── plots/
-│       ├── individual/
-│       │   ├── correlation_t010.0s.png
-│       │   ├── correlation_t020.0s.png
-│       │   └── ...
-│       └── correlation_summary.png
-├── coherence/
-│   ├── average/
-│   │   ├── data.pickle
-│   │   └── plots/
-│   │       ├── individual/
-│   │       │   ├── coherence_avg_t010.0s.png
-│   │       │   └── ...
-│   │       └── coherence_avg_summary.png
-│   └── bands/
-│       ├── data.pickle
-│       └── plots/
-│           ├── individual/
-│           │   ├── delta/
-│           │   │   ├── delta_coherence_t010.0s.png
-│           │   │   └── ...
-│           │   ├── theta/
-│           │   ├── alpha/
-│           │   ├── beta/
-│           │   └── gamma/
-│           └── band_coherence_summary.png
-```
-
 #### Progressive Analysis Workflow
 
 The ConnectivityAnalyzer supports a **progressive complexity approach** - start simple and add detail as needed:
@@ -999,111 +973,6 @@ advanced.plot_connectivity_matrices(
 )
 ```
 
-## Output Structure
-
-The package creates organized output directories with **all outputs defaulting to the subject directory**:
-
-```
-data/
-└── subject_name/
-    ├── subject_name.edf                    # Input EDF file
-    ├── triggers.csv                        # Detected triggers
-    ├── window plots/                       # Inter-trigger window plots
-    │   ├── plot_0.png
-    │   ├── plot_1.png
-    │   └── ...
-    ├── trigger.mp4                         # Video compilation
-    ├── fooof_analysis/                     # Spectral parameterization outputs
-    │   ├── fooof_summary.csv               # Summary across all channels
-    │   ├── band_powers_summary.csv         # Band powers across all channels
-    │   ├── aperiodic_exponent_summary.png  # Aperiodic exponent comparison
-    │   ├── n_peaks_summary.png             # Peak count comparison
-    │   ├── band_powers_heatmap.png         # Band power heatmap
-    │   └── T2/                             # Per-channel results
-    │       ├── T2_fooof_fit.png            # Spectral parameterization model fit
-    │       ├── T2_psd.png                  # Power spectral density
-    │       ├── T2_fooof_params.csv         # Spectral parameterization parameters
-    │       ├── T2_band_powers.csv          # Traditional band powers
-    │       └── T2_fooof_settings.json      # Analysis settings
-    ├── graph_representation/               # ConnectivityAnalyzer outputs
-    │   ├── hdf5/
-    │   │   └── subject_name_graphs.h5      # Memory-safe graph representations (HDF5)
-    │   ├── correlation/
-    │   │   ├── subject_name_0s-300s_correlation.pickle
-    │   │   └── plots/
-    │   │       ├── individual/             # Individual matrix plots
-    │   │       └── correlation_summary.png
-    │   └── coherence/
-    │       ├── average/
-    │       │   ├── subject_name_0s-300s_coherence_avg.pickle
-    │       │   └── plots/
-    │       │       ├── individual/
-    │       │       └── coherence_avg_summary.png
-    │       └── bands/
-    │           ├── subject_name_0s-300s_coherence_bands.pickle
-    │           └── plots/
-    │               ├── individual/
-    │               │   ├── delta/          # Per-band matrix plots
-    │               │   ├── theta/
-    │               │   ├── alpha/
-    │               │   ├── beta/
-    │               │   └── gamma/
-    │               └── band_coherence_summary.png
-    ├── Delta/                              # Frequency band results (SpectralAnalyzer)
-    │   ├── csv/
-    │   │   ├── T2_Delta_ma100ms_median.csv
-    │   │   └── ...
-    │   └── plots/
-    │       ├── T2_Delta_ma_plot.png
-    │       └── ...
-    ├── Theta/
-    ├── Alpha/
-    ├── Beta/
-    └── Gamma/
-```
-
-## Complete Workflow Example
-
-```python
-from krembil_kit import EDFLoader, TriggerDetector, SpectralAnalyzer
-
-# Step 1: Load EEG data
-loader = EDFLoader("data", "subject_name")
-loader.inspect_data()  # Review file structure
-
-# Load temporal channels for analysis
-loader.load_and_plot_signals(
-    signal_indices=[15, 25],  # T6, T2 channels
-    duration=1200.0,          # 20 minutes
-    save_plots=True
-)
-
-# Step 2: Detect triggers
-detector = TriggerDetector(loader, 'T2')
-detector.detect_triggers()
-print(f"Found {len(detector.df_triggers)} triggers")
-
-# Visualize and save results
-detector.plot_triggers()
-detector.save_triggers()
-detector.plot_windows()
-detector.convert_to_video()
-
-# Step 3: Advanced spectral analysis
-spectral_analyzer = SpectralAnalyzer(loader=loader, trigger_detector=detector, target_length=50)
-
-# Test different aggregation methods for visualization
-spectral_analyzer.plot_averaged_signal_window('T2', aggregation_method='mean')
-spectral_analyzer.plot_averaged_signal_window('T2', aggregation_method='median')
-
-# Full comprehensive analysis (multi-band + spectral parameterization)
-spectral_analyzer.analyze_comprehensive(channels_to_analyze=['T6', 'T2'])
-
-# Compare spectral parameterization results across channels
-spectral_analyzer.plot_fooof_comparison(channels=['T6', 'T2'], metric='aperiodic_exponent')
-spectral_analyzer.plot_fooof_comparison(channels=['T6', 'T2'], metric='n_peaks')
-```
-
 ## Advanced Usage
 
 ### Memory Management for Large Files
@@ -1222,7 +1091,7 @@ For automated window quality assessment:
 If you use this package in your research, please cite:
 
 ```
-[Your citation information here]
+[KrembilKit - Raiyan, Yousif, Srikar]
 ```
 
 ## License
@@ -1235,7 +1104,7 @@ For questions or issues, please contact the package maintainer.
 #
 # Analysis Metadata and Reproducibility
 
-Both SpectralAnalyzer and ConnectivityAnalyzer automatically track comprehensive metadata for all analyses, ensuring complete reproducibility and audit trails.
+Both SpectralAnalyzer and ConnectivityAnalyzer automatically track comprehensive metadata for all analyses.
 
 ### Metadata Features
 
@@ -1297,63 +1166,3 @@ for analysis in metadata:
         print(f"Duration: {analysis['analysis_duration_seconds']} seconds")
         print(f"Channels: {analysis['parameters']['channels_analyzed']}")
 ```
-
-**Benefits:**
-- **Reproducibility**: Exact parameters for replicating analyses
-- **Audit Trail**: Complete history of all analyses performed
-- **Collaboration**: Share analysis settings with team members
-- **Quality Control**: Track analysis versions and parameters
-- **Research Documentation**: Automatic documentation for publications
-
-## Output Directory Structure
-
-The package creates professional, organized output structures for all analyses:
-
-### SpectralAnalyzer Output
-```
-subject_folder/
-└── spectral_analysis_results/
-    ├── multiband_power/
-    │   ├── csv/
-    │   │   ├── subject_multiband_Delta_ma100ms.csv
-    │   │   └── subject_multiband_Theta_ma250ms.csv
-    │   └── plots/
-    │       ├── subject_multiband_Delta_T2.png
-    │       └── subject_multiband_Theta_T2.png
-    ├── spectral_parameterization/
-    │   ├── individual/
-    │   │   ├── subject_fooof_T2.png
-    │   │   └── subject_fooof_parameters_T2.csv
-    │   ├── summary/
-    │   │   ├── subject_fooof_parameters_summary.csv
-    │   │   └── subject_band_powers_summary.csv
-    │   └── plots/
-    │       ├── subject_aperiodic_exponent_comparison.png
-    │       └── subject_spectral_peaks_comparison.png
-    └── analysis_metadata.json
-```
-
-### ConnectivityAnalyzer Output
-```
-subject_folder/
-└── connectivity_analysis_results/
-    ├── graphs/
-    │   └── subject_graphs.h5
-    ├── correlation/
-    │   ├── subject_correlation_0s-300s.pickle
-    │   └── plots/
-    ├── coherence/
-    │   ├── average/
-    │   │   ├── subject_coherence_avg_0s-300s.pickle
-    │   │   └── plots/
-    │   └── bands/
-    │       ├── subject_coherence_bands_0s-300s.pickle
-    │       └── plots/
-    └── analysis_metadata.json
-```
-
-**Key Features:**
-- **Consistent naming**: All files follow `{subject}_{analysis_type}_{details}.ext` pattern
-- **Logical organization**: Results grouped by analysis type, not by channel or frequency
-- **Professional structure**: Clean, intuitive directory hierarchy
-- **Complete tracking**: Metadata files provide full analysis history
