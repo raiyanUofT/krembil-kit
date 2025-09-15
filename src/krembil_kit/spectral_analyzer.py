@@ -26,12 +26,7 @@ from pathlib import Path
 import datetime
 import time
 
-try:
-    # Use modern SpecParam library (successor to FOOOF)
-    from specparam import SpectralParameterization as FOOOF
-except ImportError:
-    # Fallback to legacy fooof package for compatibility
-    from fooof import FOOOF
+from specparam import SpectralParameterization as FOOOF
 
 
 class SpectralAnalyzer:

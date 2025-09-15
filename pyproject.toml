@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "krembil-kit"
 version = "1.0.0"
-description = "Comprehensive EEG analysis pipeline with advanced spectral analysis, connectivity analysis, memory-safe HDF5 graph processing, trigger detection, and spectral parameterization (FOOOF/SpecParam)"
+description = "Comprehensive EEG analysis pipeline with advanced spectral analysis, connectivity analysis, memory-safe HDF5 graph processing, trigger detection, and spectral parameterization (SpecParam)"
 readme = "README.md"
 license-files = ["LICENSE"]
 authors = [{ name = "Raiyan", email = "raiyan0511@gmail.com" }]
 maintainers = [{ name = "Raiyan", email = "raiyan0511@gmail.com" }]
 requires-python = ">=3.7"
-keywords = ["eeg", "signal-processing", "neuroscience", "spectral-analysis", "connectivity-analysis", "graph-analysis", "coherence", "correlation", "fooof", "specparam", "spectral-parameterization", "aperiodic", "oscillations", "hdf5", "memory-safe", "large-files", "multi-band", "frequency-bands"]
+keywords = ["eeg", "signal-processing", "neuroscience", "spectral-analysis", "connectivity-analysis", "graph-analysis", "coherence", "correlation", "specparam", "spectral-parameterization", "aperiodic", "oscillations", "hdf5", "memory-safe", "large-files", "multi-band", "frequency-bands"]
 dependencies = [
   "numpy",
   "scipy",
@@ -27,7 +27,6 @@ dependencies = [
   "scikit-learn",
   "Pillow",
   "specparam",
-  "fooof",
   "h5py",
   "tqdm"
 ]

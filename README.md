@@ -14,7 +14,7 @@ This package provides a complete pipeline for analyzing EEG data stored in Europ
 - **Advanced Spectral Analysis**: Multi-band power analysis with temporal smoothing and spectral parameterization
 - **Connectivity Analysis**: Graph-based network analysis with correlation, coherence, and phase metrics
 - **Traditional Analysis**: Multi-band EEG analysis (Delta, Theta, Alpha, Beta, Gamma) 
-- **Spectral Parameterization**: Separate aperiodic (1/f) and periodic (oscillatory) components using SpecParam/FOOOF
+- **Spectral Parameterization**: Separate aperiodic (1/f) and periodic (oscillatory) components using SpecParam
 - **Memory-Safe Processing**: HDF5-based analysis for large EEG files with bounded memory usage
 - **Professional Organization**: Structured output directories with consistent naming conventions
 - **Analysis Metadata**: Complete tracking of analysis parameters, timing, and results
@@ -270,7 +270,7 @@ Advanced spectral analysis tool providing comprehensive frequency-domain charact
 The SpectralAnalyzer offers **two complementary analysis approaches**:
 
 1. **Multi-band Power Analysis** - Time-resolved power across canonical EEG frequency bands
-2. **Spectral Parameterization** - FOOOF/SpecParam analysis separating aperiodic and periodic components
+2. **Spectral Parameterization** - SpecParam analysis separating aperiodic and periodic components
 
 #### Initialization
 ```python
@@ -335,10 +335,10 @@ subject_folder/
 
 ##### `analyze_spectral_parameterization(channels_to_analyze=None)`
 
-Executes advanced spectral parameterization using FOOOF/SpecParam methodology to separate neural power spectra into aperiodic (1/f) and periodic (oscillatory) components.
+Executes advanced spectral parameterization using SpecParam methodology to separate neural power spectra into aperiodic (1/f) and periodic (oscillatory) components.
 
 **Features:**
-- Automatic library detection (SpecParam preferred, FOOOF fallback)
+- Modern SpecParam library for spectral parameterization
 - Robust model fitting with configurable parameters
 - Comprehensive validation metrics and goodness-of-fit assessment
 - Frequency band power quantification with aperiodic correction
@@ -400,7 +400,7 @@ analyzer.set_frequency_bands(custom_bands)
 Configure spectral parameterization parameters.
 
 ```python
-# Custom FOOOF settings
+# Custom SpecParam settings
 analyzer.set_fooof_parameters(
     freq_range=(1, 40),
     peak_width_limits=(1, 8),
@@ -431,7 +431,7 @@ analyzer.set_smoothing_windows([0.05, 0.1, 0.25])  # 50ms, 100ms, 250ms
 Retrieve comprehensive analysis configuration and system information for documentation and reproducibility purposes.
 
 **Returns:**
-- `dict`: Configuration dictionary containing channels, frequency bands, smoothing windows, FOOOF settings, library information, and trigger detector status.
+- `dict`: Configuration dictionary containing channels, frequency bands, smoothing windows, spectral parameterization settings, library information, and trigger detector status.
 
 ```python
 # Get current analyzer configuration
@@ -1076,7 +1076,7 @@ For automated window quality assessment:
 - scikit-learn
 - Pillow
 - specparam
-- fooof
+- specparam
 - h5py
 - tqdm
 

@@ -17,6 +17,5 @@ joblib
 scikit-learn
 Pillow
 specparam
-fooof
 h5py
 tqdm
