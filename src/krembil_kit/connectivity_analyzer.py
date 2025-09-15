@@ -27,6 +27,7 @@ from tqdm import tqdm
 import json
 import datetime
 import time
+import logging
 
 from numpy import mean, ones, expand_dims, \
     linalg, array, floor, corrcoef, zeros, \
@@ -338,7 +339,8 @@ def graph_representation_elements(sub, w_sz=None, a_sz=None, w_st=0.125):
     # save channel names
     ch_names = pp_ictal.ch_names
     data_file = Path(data_dir, "ch_names.pickle")
-    print('creating ch_names')
+    logger = logging.getLogger('krembil_kit')
+    logger.info('Creating channel names file')
     pickle.dump(ch_names, open(data_file, 'wb'))
 
     p_save_preictal_trace = Process(target=save_gres,
@@ -408,7 +410,8 @@ def save_gres(signal_trace, sfreq, window_size, window_step, data_dir, trace_typ
     file_name = trace_type + ".pickle"
     data_file = Path(data_dir, file_name)
     with open(data_file, 'wb') as save_file:
-        print('dumping some file')
+        logger = logging.getLogger('krembil_kit')
+        logger.info('Saving graph representation data to file')
         pickle.dump(result, save_file)
 
 def custom_adj_get_all(x_features, x_adj, sfreq, i, last_step):
@@ -422,7 +425,8 @@ def custom_adj_get_all(x_features, x_adj, sfreq, i, last_step):
         :return: ndarrays of adj_matrices
     """
 
-    print(f'On step {i} / {last_step}')
+    logger = logging.getLogger('krembil_kit')
+    logger.info(f'Processing step {i} / {last_step}')
 
     # get adj_matrices
     adj_matrices = generate_adjacency_matrices(x_adj, sfreq)
@@ -903,7 +907,8 @@ class ConnectivityAnalyzer:
         segment_duration_seconds = segment_duration
         
         # Read EDF header to get file parameters
-        print("→ Reading EDF header...")
+        logger = logging.getLogger('krembil_kit')
+        logger.info("→ Reading EDF header...")
         raw0 = mne.io.read_raw_edf(self.edf_loader.edf_file_path, preload=False, verbose=False)
         sfreq = raw0.info["sfreq"]
         n_times = raw0.n_times
@@ -934,15 +939,15 @@ class ConnectivityAnalyzer:
         n_segments = int(np.ceil(total_duration_seconds / segment_duration_seconds))
         segment_duration_samples = int(segment_duration_seconds * sfreq)
         
-        print(f"→ File duration: {file_duration_seconds:.1f}s ({file_duration_seconds/60:.1f} min)")
+        logger.info(f"→ File duration: {file_duration_seconds:.1f}s ({file_duration_seconds/60:.1f} min)")
         if start_time is not None or stop_time is not None:
-            print(f"→ Processing time range: {actual_start_time:.1f}s - {actual_stop_time:.1f}s ({total_duration_seconds:.1f}s total)")
+            logger.info(f"→ Processing time range: {actual_start_time:.1f}s - {actual_stop_time:.1f}s ({total_duration_seconds:.1f}s total)")
         else:
-            print(f"→ Processing entire file: {total_duration_seconds:.1f}s ({total_duration_seconds/60:.1f} min)")
-        print(f"→ Processing {n_segments} segments of {segment_duration:.1f} seconds each")
-        print(f"→ Window size: {self.window_size} samples ({self.window_size/sfreq:.2f}s)")
-        print(f"→ Adjacency window size: {self.adj_window_size} samples ({self.adj_window_size/sfreq:.2f}s)")
-        print(f"→ Window overlap: {overlap_ratio:.1%} (step: {window_step} samples)")
+            logger.info(f"→ Processing entire file: {total_duration_seconds:.1f}s ({total_duration_seconds/60:.1f} min)")
+        logger.info(f"→ Processing {n_segments} segments of {segment_duration:.1f} seconds each")
+        logger.info(f"→ Window size: {self.window_size} samples ({self.window_size/sfreq:.2f}s)")
+        logger.info(f"→ Adjacency window size: {self.adj_window_size} samples ({self.adj_window_size/sfreq:.2f}s)")
+        logger.info(f"→ Window overlap: {overlap_ratio:.1%} (step: {window_step} samples)")
         
         # Create HDF5 output file with expandable datasets
         graphs_dir = self.output_dir / "graphs"
@@ -955,7 +960,7 @@ class ConnectivityAnalyzer:
         else:
             hdf5_path = graphs_dir / f"{self.filename}_graphs.h5"
         
-        print(f"→ Creating HDF5 file: {hdf5_path}")
+        logger.info(f"→ Creating HDF5 file: {hdf5_path}")
         
         with h5py.File(hdf5_path, 'w') as h5_file:
             # Initialize expandable datasets
@@ -991,7 +996,7 @@ class ConnectivityAnalyzer:
                 segment_start_samples = int(segment_start_seconds * sfreq)
                 segment_stop_samples = int(segment_stop_seconds * sfreq)
                 
-                print(f"→ Processing segment {segment_idx + 1}/{n_segments}: "
+                logger.info(f"→ Processing segment {segment_idx + 1}/{n_segments}: "
                       f"{segment_start_seconds:.1f}s - {segment_stop_seconds:.1f}s")
                 
                 try:
@@ -1009,38 +1014,38 @@ class ConnectivityAnalyzer:
                     
                     n_windows = len(adj_matrices_list)
                     if n_windows > 0:
-                        print(f"   → Appending {n_windows} windows to HDF5...")
+                        logger.info(f"   → Appending {n_windows} windows to HDF5...")
                         
                         # Save results immediately to HDF5
                         _append_to_hdf5(h5_file, adj_matrices_list, node_features_list, 
                                        edge_features_list, window_starts)
                         
                         total_windows_processed += n_windows
-                        print(f"   ✔ Processed {n_windows} windows, total: {total_windows_processed}")
+                        logger.info(f"   ✔ Processed {n_windows} windows, total: {total_windows_processed}")
                         
                         # Show current HDF5 file size for debugging
                         current_hdf5_size = h5_file['adjacency_matrices'].shape[0]
-                        print(f"   → HDF5 now contains {current_hdf5_size} total windows")
+                        logger.info(f"   → HDF5 now contains {current_hdf5_size} total windows")
                     else:
-                        print(f"   ⚠ No valid windows in segment {segment_idx + 1}")
+                        logger.warning(f"   ⚠ No valid windows in segment {segment_idx + 1}")
                     
                     # Explicit memory cleanup
                     del adj_matrices_list, node_features_list, edge_features_list, window_starts
                     gc.collect()
                     
                 except Exception as e:
-                    print(f"   ✗ Error processing segment {segment_idx + 1}: {e}")
+                    logger.error(f"   ✗ Error processing segment {segment_idx + 1}: {e}")
                     continue
             
             # Close progress bar and store final statistics
             pbar.close()
             h5_file.attrs['total_windows_processed'] = total_windows_processed
         
-        print(f"✔ Complete graph representation saved to: {hdf5_path}")
-        print(f"✔ Total windows processed: {total_windows_processed}")
+        logger.info(f"✔ Complete graph representation saved to: {hdf5_path}")
+        logger.info(f"✔ Total windows processed: {total_windows_processed}")
         if start_time is not None or stop_time is not None:
-            print(f"✔ Time range processed: {actual_start_time:.1f}s - {actual_stop_time:.1f}s ({total_duration_seconds:.1f}s)")
-        print(f"✔ Memory-safe processing completed successfully")
+            logger.info(f"✔ Time range processed: {actual_start_time:.1f}s - {actual_stop_time:.1f}s ({total_duration_seconds:.1f}s)")
+        logger.info(f"✔ Graph processing completed successfully")
         
         # Save analysis metadata
         analysis_end_time = time.time()
@@ -1190,7 +1195,7 @@ class ConnectivityAnalyzer:
         with open(out_path, "wb") as f:
             pickle.dump({"starts": starts, "corr_matrices": corr_matrices}, f)
 
-        print(f"✔ Saved {len(corr_matrices)} correlation matrices to: {out_path}")
+        logger.info(f"✔ Saved {len(corr_matrices)} correlation matrices to: {out_path}")
         
         # Save analysis metadata
         analysis_end_time = time.time()
@@ -1320,7 +1325,7 @@ class ConnectivityAnalyzer:
                 
                 # validate block has data
                 if block.size == 0:
-                    print(f"Warning: Empty block at {seg_start/sfreq:.2f}s, skipping")
+                    logger.warning(f"Warning: Empty block at {seg_start/sfreq:.2f}s, skipping")
                     continue
                 
                 # use legacy coherence calculation
@@ -1352,7 +1357,7 @@ class ConnectivityAnalyzer:
         with open(out_path, "wb") as f:
             pickle.dump({"starts": starts, "coherence_matrices": coherence_matrices}, f)
 
-        print(f"✔ Saved {len(coherence_matrices)} average coherence matrices to: {out_path}")
+        logger.info(f"✔ Saved {len(coherence_matrices)} average coherence matrices to: {out_path}")
         
         # Save analysis metadata
         analysis_end_time = time.time()
@@ -1486,7 +1491,7 @@ class ConnectivityAnalyzer:
                 
                 # validate block has data
                 if block.size == 0:
-                    print(f"Warning: Empty block at {seg_start/sfreq:.2f}s, skipping")
+                    logger.warning(f"Warning: Empty block at {seg_start/sfreq:.2f}s, skipping")
                     continue
                 
                 # use legacy coherence calculation
@@ -1520,7 +1525,7 @@ class ConnectivityAnalyzer:
                 "frequency_bands": freq_bands
             }, f)
 
-        print(f"✔ Saved {len(starts)} time windows with coherence by frequency band to: {out_path}")
+        logger.info(f"✔ Saved {len(starts)} time windows with coherence by frequency band to: {out_path}")
         
         # Save analysis metadata
         analysis_end_time = time.time()
@@ -1627,9 +1632,9 @@ class ConnectivityAnalyzer:
         # Initialize results dictionary
         results = {}
         
-        print(f"\n🎨 Starting connectivity matrix plotting...")
-        print(f"   📊 Plot types: {plot_types}")
-        print(f"   📁 Output subdirectory: {output_subdir}")
+        logger.info(f"\n🎨 Starting connectivity matrix plotting...")
+        logger.info(f"   📊 Plot types: {plot_types}")
+        logger.info(f"   📁 Output subdirectory: {output_subdir}")
         
         # Process each plot type
         for plot_type in plot_types:
@@ -1650,26 +1655,26 @@ class ConnectivityAnalyzer:
                         save_individual, save_summary, dpi, figsize
                     )
                 else:
-                    print(f"⚠️  Unknown plot type: {plot_type}")
+                    logger.warning(f"⚠️  Unknown plot type: {plot_type}")
                     continue
                 
                 if output_dir:
                     results[plot_type] = output_dir
-                    print(f"✅ {plot_type} plots completed: {output_dir}")
+                    logger.info(f"✅ {plot_type} plots completed: {output_dir}")
                 else:
-                    print(f"⚠️  No data found for {plot_type}")
+                    logger.warning(f"⚠️  No data found for {plot_type}")
                     
             except Exception as e:
-                print(f"❌ Error plotting {plot_type}: {e}")
+                logger.error(f"❌ Error plotting {plot_type}: {e}")
                 continue
         
         if results:
-            print(f"\n🎉 Plotting completed successfully!")
-            print(f"📁 Plot directories created:")
+            logger.info(f"\n🎉 Plotting completed successfully!")
+            logger.info(f"📁 Plot directories created:")
             for plot_type, path in results.items():
-                print(f"   📈 {plot_type}: {path}")
+                logger.info(f"   📈 {plot_type}: {path}")
         else:
-            print(f"\n⚠️  No plots were generated. Check that data files exist.")
+            logger.warning(f"\n⚠️  No plots were generated. Check that data files exist.")
         
         return results
 
@@ -1780,7 +1785,7 @@ class ConnectivityAnalyzer:
             with open(corr_file, 'rb') as f:
                 corr_data = pickle.load(f)
         except Exception as e:
-            print(f"Error loading correlation data: {e}")
+            logger.error(f"Error loading correlation data: {e}")
             return None
         
         matrices = corr_data['corr_matrices']
@@ -1795,7 +1800,7 @@ class ConnectivityAnalyzer:
         # Create output directory
         plot_dir = self._create_plot_directory(corr_dir, output_subdir)
         
-        print(f"   🔄 Plotting {len(matrices)} correlation matrices...")
+        logger.info(f"   🔄 Plotting {len(matrices)} correlation matrices...")
         
         # Plot individual matrices if requested
         if save_individual:
@@ -1826,7 +1831,7 @@ class ConnectivityAnalyzer:
                 plt.close()
                 
                 if (i + 1) % 10 == 0:
-                    print(f"      📈 Saved {i + 1}/{len(matrices)} individual plots")
+                    logger.info(f"      📈 Saved {i + 1}/{len(matrices)} individual plots")
         
         # Create summary plots if requested
         if save_summary:
@@ -1898,7 +1903,7 @@ class ConnectivityAnalyzer:
             with open(coh_file, 'rb') as f:
                 coh_data = pickle.load(f)
         except Exception as e:
-            print(f"Error loading coherence average data: {e}")
+            logger.error(f"Error loading coherence average data: {e}")
             return None
         
         matrices = coh_data['coherence_matrices']
@@ -1913,7 +1918,7 @@ class ConnectivityAnalyzer:
         # Create output directory
         plot_dir = self._create_plot_directory(coh_avg_dir, output_subdir)
         
-        print(f"   🔄 Plotting {len(matrices)} average coherence matrices...")
+        logger.info(f"   🔄 Plotting {len(matrices)} average coherence matrices...")
         
         # Plot individual matrices if requested
         if save_individual:
@@ -1944,7 +1949,7 @@ class ConnectivityAnalyzer:
                 plt.close()
                 
                 if (i + 1) % 10 == 0:
-                    print(f"      📈 Saved {i + 1}/{len(matrices)} individual plots")
+                    logger.info(f"      📈 Saved {i + 1}/{len(matrices)} individual plots")
         
         # Create summary plots if requested
         if save_summary:
@@ -2016,7 +2021,7 @@ class ConnectivityAnalyzer:
             with open(coh_file, 'rb') as f:
                 coh_data = pickle.load(f)
         except Exception as e:
-            print(f"Error loading coherence bands data: {e}")
+            logger.error(f"Error loading coherence bands data: {e}")
             return None
         
         coherence_by_band = coh_data['coherence_by_band']
@@ -2039,7 +2044,7 @@ class ConnectivityAnalyzer:
         }
         
         total_plots = sum(len(matrices) for matrices in coherence_by_band.values())
-        print(f"   🔄 Plotting {total_plots} band-specific coherence matrices across {len(coherence_by_band)} bands...")
+        logger.info(f"   🔄 Plotting {total_plots} band-specific coherence matrices across {len(coherence_by_band)} bands...")
         
         plots_saved = 0
         
@@ -2058,7 +2063,7 @@ class ConnectivityAnalyzer:
             freq_range = frequency_bands[band_name]
             colormap = band_colors.get(band_name, 'viridis')
             
-            print(f"      🎵 Processing {band_name} band ({freq_range[0]}-{freq_range[1]} Hz): {len(filtered_matrices)} matrices")
+            logger.info(f"      🎵 Processing {band_name} band ({freq_range[0]}-{freq_range[1]} Hz): {len(filtered_matrices)} matrices")
             
             # Plot individual matrices if requested
             if save_individual:
@@ -2091,7 +2096,7 @@ class ConnectivityAnalyzer:
                     
                     plots_saved += 1
                     if plots_saved % 20 == 0:
-                        print(f"         📈 Saved {plots_saved}/{total_plots} band plots")
+                        logger.info(f"         📈 Saved {plots_saved}/{total_plots} band plots")
         
         # Create band comparison summary if requested
         if save_summary:
