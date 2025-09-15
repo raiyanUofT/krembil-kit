@@ -1,4 +1,4 @@
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 from .edf_loader import EDFLoader
 from .trigger_detector import TriggerDetector

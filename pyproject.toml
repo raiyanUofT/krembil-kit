@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "krembil-kit"
-version = "1.0.0"
+version = "1.0.1"
 description = "Comprehensive EEG analysis pipeline with advanced spectral analysis, connectivity analysis, memory-safe HDF5 graph processing, trigger detection, and spectral parameterization (SpecParam)"
 readme = "README.md"
 license-files = ["LICENSE"]
