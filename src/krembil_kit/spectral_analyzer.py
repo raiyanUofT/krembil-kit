@@ -26,7 +26,7 @@ from pathlib import Path
 import datetime
 import time
 
-from specparam import SpectralParameterization as FOOOF
+from specparam import SpectralModel as FOOOF
 
 
 class SpectralAnalyzer:
