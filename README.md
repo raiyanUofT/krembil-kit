@@ -791,6 +791,79 @@ results = processor.plot_connectivity_matrices(
 )
 ```
 
+##### `compute_adjacency_matrices(eeg_data, sampling_frequency)`
+Generate 3D adjacency matrices directly from EEG numpy array for direct integration with external pipelines.
+
+This method provides a streamlined interface for generating graph adjacency matrices from raw EEG data without file I/O operations. Designed for integration with external preprocessing pipelines and real-time processing workflows.
+
+**Parameters:**
+- `eeg_data` (np.ndarray): EEG signal data with shape (n_channels, n_timepoints). Each row represents one electrode/channel, each column a time sample.
+- `sampling_frequency` (float): Sampling frequency of the EEG data in Hz. Required for proper frequency-domain analysis in coherence and phase computations.
+
+**Returns:**
+- `np.ndarray`: 3D array of adjacency matrices with shape (3, n_channels, n_channels).
+  - Index 0: Correlation matrix
+  - Index 1: Coherence matrix (frequency-averaged)
+  - Index 2: Phase matrix
+
+```python
+# Direct array processing for external pipelines
+analyzer = ConnectivityAnalyzer(edf_loader=loader)
+eeg_signal = np.random.randn(64, 5000)  # 64 channels, 5000 timepoints
+adj_matrices = analyzer.compute_adjacency_matrices(eeg_signal, 500.0)
+
+print(adj_matrices.shape)  # (3, 64, 64)
+
+# Access specific connectivity types
+correlation_matrix = adj_matrices[0]  # Correlation
+coherence_matrix = adj_matrices[1]    # Coherence
+phase_matrix = adj_matrices[2]        # Phase
+```
+
+##### `compute_node_edge_features(eeg_data, sampling_frequency)`
+Generate comprehensive node and edge features directly from EEG numpy array for graph neural networks and advanced connectivity analysis.
+
+This method provides comprehensive graph feature extraction from raw EEG data without file I/O operations. Designed for graph neural networks and advanced connectivity analysis requiring both node-level and edge-level features.
+
+**Parameters:**
+- `eeg_data` (np.ndarray): EEG signal data with shape (n_channels, n_timepoints). Each row represents one electrode/channel, each column a time sample.
+- `sampling_frequency` (float): Sampling frequency of the EEG data in Hz. Required for proper frequency-domain analysis and band-specific feature computation.
+
+**Returns:**
+- `dict`: Dictionary containing node and edge features with descriptive keys:
+  
+  **Node Features:**
+  - `'node_energy'`: array(n_channels, 1) - Total signal energy per channel
+  - `'node_band_energy'`: array(n_channels, n_bands) - Energy per frequency band
+  
+  **Edge Features:**
+  - `'edge_correlation'`: array(n_channels, n_channels, 1) - Correlation matrix
+  - `'edge_coherence'`: array(n_channels, n_channels, 1) - Coherence matrix
+  - `'edge_coherence_bands'`: array(n_channels, n_channels, n_bands+1) - Multi-band coherence
+  - `'edge_phase'`: array(n_channels, n_channels, 1) - Phase matrix
+
+**Frequency Bands (automatically determined by sampling frequency):**
+- fs < 499 Hz: 6 bands (delta, theta, alpha, beta, gamma, gammaHi)
+- fs < 999 Hz: 7 bands (adds ripples)
+- fs ≥ 999 Hz: 8 bands (adds fastRipples)
+
+```python
+# Comprehensive feature extraction for graph neural networks
+analyzer = ConnectivityAnalyzer(edf_loader=loader)
+eeg_signal = np.random.randn(64, 5000)  # 64 channels, 5000 timepoints
+features = analyzer.compute_node_edge_features(eeg_signal, 500.0)
+
+# Access node features
+energy = features['node_energy']              # (64, 1)
+band_energy = features['node_band_energy']    # (64, 6) for 500Hz
+
+# Access edge features
+correlation = features['edge_correlation']    # (64, 64, 1)
+coherence = features['edge_coherence']        # (64, 64, 1)
+phase = features['edge_phase']                # (64, 64, 1)
+multi_band_coherence = features['edge_coherence_bands']  # (64, 64, 7) for 500Hz
+```
+
 #### Progressive Analysis Workflow
 
 The ConnectivityAnalyzer supports a **progressive complexity approach** - start simple and add detail as needed:

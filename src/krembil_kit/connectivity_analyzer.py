@@ -1544,6 +1544,193 @@ class ConnectivityAnalyzer:
                                    analysis_start_time, analysis_end_time)
         
         return out_path
+
+    def compute_adjacency_matrices(
+        self,
+        eeg_data: np.ndarray,
+        sampling_frequency: float
+    ) -> np.ndarray:
+        """
+        Generate 3D adjacency matrices directly from EEG numpy array.
+        
+        This method provides a streamlined interface for generating graph adjacency
+        matrices from raw EEG data without file I/O operations.
+        
+        The function computes three meaningful connectivity matrices:
+        1. Correlation matrix (linear statistical dependencies)
+        2. Coherence matrix (frequency-averaged spectral connectivity)
+        3. Phase matrix (phase-based coupling measures)
+        
+        Parameters
+        ----------
+        eeg_data : np.ndarray
+            EEG signal data with shape (n_channels, n_timepoints).
+            Each row represents one electrode/channel, each column a time sample.
+        sampling_frequency : float
+            Sampling frequency of the EEG data in Hz. Required for proper
+            frequency-domain analysis in coherence and phase computations.
+        
+        Returns
+        -------
+        np.ndarray
+            3D array of adjacency matrices with shape (3, n_channels, n_channels).
+            - Index 0: Correlation matrix
+            - Index 1: Coherence matrix (frequency-averaged)
+            - Index 2: Phase matrix
+        
+        Raises
+        ------
+        ValueError
+            If eeg_data is not 2D, has invalid dimensions, or sampling_frequency <= 0.
+        
+        Examples
+        --------
+        >>> analyzer = ConnectivityAnalyzer(edf_loader=loader)
+        >>> eeg_signal = np.random.randn(64, 5000)  # 64 channels, 5000 timepoints
+        >>> adj_matrices = analyzer.compute_adjacency_matrices(eeg_signal, 500.0)
+        >>> print(adj_matrices.shape)  # (3, 64, 64)
+        >>> 
+        >>> # Access specific connectivity types
+        >>> correlation_matrix = adj_matrices[0]  # Correlation
+        >>> coherence_matrix = adj_matrices[1]    # Coherence
+        >>> phase_matrix = adj_matrices[2]        # Phase
+        
+        Notes
+        -----
+        This method uses the same robust connectivity computation pipeline as the
+        main analysis methods but bypasses file I/O for direct array processing.
+        """
+        # Input validation
+        if not isinstance(eeg_data, np.ndarray):
+            raise ValueError("eeg_data must be a numpy array")
+        
+        if eeg_data.ndim != 2:
+            raise ValueError(f"eeg_data must be 2D array with shape (n_channels, n_timepoints), got shape {eeg_data.shape}")
+        
+        if eeg_data.shape[0] < 2:
+            raise ValueError("eeg_data must have at least 2 channels")
+        
+        if sampling_frequency <= 0:
+            raise ValueError("sampling_frequency must be positive")
+        
+        # Generate adjacency matrices using existing robust pipeline
+        adj_matrices_list = generate_adjacency_matrices(eeg_data, sampling_frequency)
+        
+        # Exclude the ones matrix (index 0) and keep only meaningful connectivity matrices
+        meaningful_matrices = adj_matrices_list[1:]  # Skip ones matrix, keep corr, coh, phase
+        
+        # Convert list to 3D numpy array for consistent output format
+        adj_matrices_3d = np.array(meaningful_matrices, dtype=np.float32)
+        
+        return adj_matrices_3d
+
+    def compute_node_edge_features(
+        self,
+        eeg_data: np.ndarray,
+        sampling_frequency: float
+    ) -> dict:
+        """
+        Generate node and edge features directly from EEG numpy array.
+        
+        This method provides comprehensive graph feature extraction from raw EEG data
+        without file I/O operations. Designed for graph neural networks and advanced
+        connectivity analysis requiring both node-level and edge-level features.
+        
+        Node features capture electrode-specific signal characteristics:
+        - Energy features: Total signal power per electrode
+        - Band energy features: Frequency-specific power across EEG bands
+        
+        Edge features capture pairwise connectivity characteristics:
+        - Correlation features: Linear statistical dependencies
+        - Coherence features: Spectral connectivity (simple and multi-band)
+        - Phase features: Phase-based coupling measures
+        
+        Parameters
+        ----------
+        eeg_data : np.ndarray
+            EEG signal data with shape (n_channels, n_timepoints).
+            Each row represents one electrode/channel, each column a time sample.
+        sampling_frequency : float
+            Sampling frequency of the EEG data in Hz. Required for proper
+            frequency-domain analysis and band-specific feature computation.
+        
+        Returns
+        -------
+        dict
+            Dictionary containing node and edge features with descriptive keys:
+            
+            Node Features:
+            - 'node_energy': array(n_channels, 1) - Total signal energy per channel
+            - 'node_band_energy': array(n_channels, n_bands) - Energy per frequency band
+            
+            Edge Features:
+            - 'edge_correlation': array(n_channels, n_channels, 1) - Correlation matrix
+            - 'edge_coherence': array(n_channels, n_channels, 1) - Coherence matrix
+            - 'edge_coherence_bands': array(n_channels, n_channels, n_bands+1) - Multi-band coherence
+            - 'edge_phase': array(n_channels, n_channels, 1) - Phase matrix
+        
+        Raises
+        ------
+        ValueError
+            If eeg_data is not 2D, has invalid dimensions, or sampling_frequency <= 0.
+        
+        Examples
+        --------
+        >>> analyzer = ConnectivityAnalyzer(edf_loader=loader)
+        >>> eeg_signal = np.random.randn(64, 5000)  # 64 channels, 5000 timepoints
+        >>> features = analyzer.compute_node_edge_features(eeg_signal, 500.0)
+        >>> 
+        >>> # Access node features
+        >>> energy = features['node_energy']              # (64, 1)
+        >>> band_energy = features['node_band_energy']    # (64, 6) for 500Hz
+        >>> 
+        >>> # Access edge features
+        >>> correlation = features['edge_correlation']    # (64, 64, 1)
+        >>> coherence = features['edge_coherence']        # (64, 64, 1)
+        >>> phase = features['edge_phase']                # (64, 64, 1)
+        
+        Notes
+        -----
+        This method uses the same robust feature computation pipeline as the main
+        analysis methods but bypasses file I/O for direct array processing.
+        
+        Frequency bands are automatically determined based on sampling frequency:
+        - fs < 499 Hz: 6 bands (delta, theta, alpha, beta, gamma, gammaHi)
+        - fs < 999 Hz: 7 bands (adds ripples)
+        - fs ≥ 999 Hz: 8 bands (adds fastRipples)
+        """
+        # Input validation (same as adjacency function for consistency)
+        if not isinstance(eeg_data, np.ndarray):
+            raise ValueError("eeg_data must be a numpy array")
+        
+        if eeg_data.ndim != 2:
+            raise ValueError(f"eeg_data must be 2D array with shape (n_channels, n_timepoints), got shape {eeg_data.shape}")
+        
+        if eeg_data.shape[0] < 2:
+            raise ValueError("eeg_data must have at least 2 channels")
+        
+        if sampling_frequency <= 0:
+            raise ValueError("sampling_frequency must be positive")
+        
+        # Generate node and edge features using existing robust pipeline
+        node_features_list, edge_features_list = generate_node_and_edge_features(eeg_data, sampling_frequency)
+        
+        # Organize features into dictionary, excluding ones matrices
+        # Node features: skip index 0 (ones), keep energy and band_energy
+        # Edge features: skip index 0 (ones), keep correlation, coherence, coherence_bands, phase
+        features_dict = {
+            # Node features (excluding ones at index 0)
+            'node_energy': node_features_list[1],        # Total signal energy
+            'node_band_energy': node_features_list[2],   # Energy per frequency band
+            
+            # Edge features (excluding ones at index 0)
+            'edge_correlation': edge_features_list[1],      # Correlation connectivity
+            'edge_coherence': edge_features_list[2],        # Coherence connectivity
+            'edge_coherence_bands': edge_features_list[3],  # Multi-band coherence
+            'edge_phase': edge_features_list[4]             # Phase connectivity
+        }
+        
+        return features_dict
     
     # ========================================================================
     # PUBLIC METHODS - Visualization
