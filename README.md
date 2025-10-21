@@ -801,10 +801,11 @@ This method provides a streamlined interface for generating graph adjacency matr
 - `sampling_frequency` (float): Sampling frequency of the EEG data in Hz. Required for proper frequency-domain analysis in coherence and phase computations.
 
 **Returns:**
-- `np.ndarray`: 3D array of adjacency matrices with shape (3, n_channels, n_channels).
-  - Index 0: Correlation matrix
-  - Index 1: Coherence matrix (frequency-averaged)
-  - Index 2: Phase matrix
+- `np.ndarray`: 3D array of adjacency matrices with shape (4, n_channels, n_channels).
+  - Index 0: Ones matrix (baseline connectivity)
+  - Index 1: Correlation matrix
+  - Index 2: Coherence matrix (frequency-averaged)
+  - Index 3: Phase matrix
 
 ```python
 # Direct array processing for external pipelines
@@ -812,12 +813,13 @@ analyzer = ConnectivityAnalyzer(edf_loader=loader)
 eeg_signal = np.random.randn(64, 5000)  # 64 channels, 5000 timepoints
 adj_matrices = analyzer.compute_adjacency_matrices(eeg_signal, 500.0)
 
-print(adj_matrices.shape)  # (3, 64, 64)
+print(adj_matrices.shape)  # (4, 64, 64)
 
 # Access specific connectivity types
-correlation_matrix = adj_matrices[0]  # Correlation
-coherence_matrix = adj_matrices[1]    # Coherence
-phase_matrix = adj_matrices[2]        # Phase
+ones_matrix = adj_matrices[0]         # Ones matrix
+correlation_matrix = adj_matrices[1]  # Correlation
+coherence_matrix = adj_matrices[2]    # Coherence
+phase_matrix = adj_matrices[3]        # Phase
 ```
 
 ##### `compute_node_edge_features(eeg_data, sampling_frequency)`

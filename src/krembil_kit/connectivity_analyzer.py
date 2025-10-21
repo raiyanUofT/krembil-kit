@@ -822,7 +822,7 @@ class ConnectivityAnalyzer:
     
     def generate_graphs(self, segment_duration: float = 180.0, 
                        start_time: float = None, stop_time: float = None,
-                       overlap_ratio: float = 0.875) -> Path:
+                       overlap_ratio: float = 0.875) -> Tuple[Path, np.ndarray]:
         """
         Execute comprehensive graph-based connectivity analysis from EEG data with memory-efficient processing.
         
@@ -863,9 +863,12 @@ class ConnectivityAnalyzer:
         
         Returns
         -------
-        Path
-            Path to the generated HDF5 file containing structured graph representations
-            with expandable datasets for efficient storage and retrieval.
+        Tuple[Path, np.ndarray]
+            A tuple containing:
+            - Path to the generated HDF5 file containing structured graph representations
+              with expandable datasets for efficient storage and retrieval
+            - 4D numpy array of adjacency matrices with shape (n_windows, 4, n_channels, n_channels)
+              where the 4 matrices are: ones, correlation, coherence, and phase matrices
         
         Raises
         ------
@@ -877,16 +880,22 @@ class ConnectivityAnalyzer:
         --------
         >>> analyzer = ConnectivityAnalyzer(edf_loader=loader)
         >>> # Process entire recording
-        >>> hdf5_path = analyzer.generate_graphs(segment_duration=300.0)
+        >>> hdf5_path, adj_matrices = analyzer.generate_graphs(segment_duration=300.0)
         >>> 
         >>> # Analyze specific temporal window (5-15 minutes)
-        >>> hdf5_path = analyzer.generate_graphs(start_time=300, stop_time=900)
+        >>> hdf5_path, adj_matrices = analyzer.generate_graphs(start_time=300, stop_time=900)
         >>> 
         >>> # Process initial 10 minutes only
-        >>> hdf5_path = analyzer.generate_graphs(stop_time=600)
+        >>> hdf5_path, adj_matrices = analyzer.generate_graphs(stop_time=600)
         >>> 
         >>> # High temporal resolution with increased overlap
-        >>> hdf5_path = analyzer.generate_graphs(segment_duration=180.0, overlap_ratio=0.95)
+        >>> hdf5_path, adj_matrices = analyzer.generate_graphs(segment_duration=180.0, overlap_ratio=0.95)
+        >>> 
+        >>> # Access adjacency matrices: shape (n_windows, 4, n_channels, n_channels)
+        >>> ones_matrices = adj_matrices[:, 0, :, :]      # Ones matrices
+        >>> corr_matrices = adj_matrices[:, 1, :, :]      # Correlation matrices  
+        >>> coh_matrices = adj_matrices[:, 2, :, :]       # Coherence matrices
+        >>> phase_matrices = adj_matrices[:, 3, :, :]     # Phase matrices
         
         Notes
         -----
@@ -1068,7 +1077,11 @@ class ConnectivityAnalyzer:
         self._save_analysis_metadata("graph_generation", parameters, results_info, 
                                    analysis_start_time, analysis_end_time)
         
-        return hdf5_path
+        # Read back adjacency matrices for backward compatibility
+        with h5py.File(hdf5_path, 'r') as h5_read:
+            adjacency_matrices = h5_read['adjacency_matrices'][:]
+        
+        return hdf5_path, adjacency_matrices
     
     # ========================================================================
     # PUBLIC METHODS - Independent Analysis
@@ -1556,10 +1569,11 @@ class ConnectivityAnalyzer:
         This method provides a streamlined interface for generating graph adjacency
         matrices from raw EEG data without file I/O operations.
         
-        The function computes three meaningful connectivity matrices:
-        1. Correlation matrix (linear statistical dependencies)
-        2. Coherence matrix (frequency-averaged spectral connectivity)
-        3. Phase matrix (phase-based coupling measures)
+        The function computes four connectivity matrices:
+        1. Ones matrix (fully connected baseline)
+        2. Correlation matrix (linear statistical dependencies)
+        3. Coherence matrix (frequency-averaged spectral connectivity)
+        4. Phase matrix (phase-based coupling measures)
         
         Parameters
         ----------
@@ -1573,10 +1587,11 @@ class ConnectivityAnalyzer:
         Returns
         -------
         np.ndarray
-            3D array of adjacency matrices with shape (3, n_channels, n_channels).
-            - Index 0: Correlation matrix
-            - Index 1: Coherence matrix (frequency-averaged)
-            - Index 2: Phase matrix
+            3D array of adjacency matrices with shape (4, n_channels, n_channels).
+            - Index 0: Ones matrix (baseline connectivity)
+            - Index 1: Correlation matrix
+            - Index 2: Coherence matrix (frequency-averaged)
+            - Index 3: Phase matrix
         
         Raises
         ------
@@ -1588,12 +1603,13 @@ class ConnectivityAnalyzer:
         >>> analyzer = ConnectivityAnalyzer(edf_loader=loader)
         >>> eeg_signal = np.random.randn(64, 5000)  # 64 channels, 5000 timepoints
         >>> adj_matrices = analyzer.compute_adjacency_matrices(eeg_signal, 500.0)
-        >>> print(adj_matrices.shape)  # (3, 64, 64)
+        >>> print(adj_matrices.shape)  # (4, 64, 64)
         >>> 
         >>> # Access specific connectivity types
-        >>> correlation_matrix = adj_matrices[0]  # Correlation
-        >>> coherence_matrix = adj_matrices[1]    # Coherence
-        >>> phase_matrix = adj_matrices[2]        # Phase
+        >>> ones_matrix = adj_matrices[0]         # Ones matrix
+        >>> correlation_matrix = adj_matrices[1]  # Correlation
+        >>> coherence_matrix = adj_matrices[2]    # Coherence
+        >>> phase_matrix = adj_matrices[3]        # Phase
         
         Notes
         -----
@@ -1616,11 +1632,8 @@ class ConnectivityAnalyzer:
         # Generate adjacency matrices using existing robust pipeline
         adj_matrices_list = generate_adjacency_matrices(eeg_data, sampling_frequency)
         
-        # Exclude the ones matrix (index 0) and keep only meaningful connectivity matrices
-        meaningful_matrices = adj_matrices_list[1:]  # Skip ones matrix, keep corr, coh, phase
-        
         # Convert list to 3D numpy array for consistent output format
-        adj_matrices_3d = np.array(meaningful_matrices, dtype=np.float32)
+        adj_matrices_3d = np.array(adj_matrices_list, dtype=np.float32)
         
         return adj_matrices_3d
 
