@@ -6,6 +6,7 @@ from .edf_loader import EDFLoader
 from .trigger_detector import TriggerDetector
 from .spectral_analyzer import SpectralAnalyzer
 from .connectivity_analyzer import ConnectivityAnalyzer
+from .connectivity_reader import ConnectivityReader
 
 def set_log_level(level='INFO'):
     """
@@ -48,4 +49,5 @@ __all__ = ["EDFLoader",
            "TriggerDetector",
            "SpectralAnalyzer",
            "ConnectivityAnalyzer",
+           "ConnectivityReader",
            "set_log_level"]

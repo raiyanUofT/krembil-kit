@@ -61,6 +61,11 @@ connectivity_analyzer.plot_connectivity_matrices()
 # Level 3: Full graph representations
 # Memory-safe graph generation (works for any file size):
 hdf5_path, adj_matrices = connectivity_analyzer.generate_graphs(segment_duration=60.0, overlap_ratio=0.125)
+
+# Reading connectivity results
+reader = ConnectivityReader()
+correlation_data = reader.load_correlation_matrices("./connectivity_analysis_results/correlation/subject_correlation_0s-300s.pickle")
+adjacency_data = reader.load_adjacency_matrices("./connectivity_analysis_results/graphs/subject_graphs.h5")
 ```
 
 ## Data Structure Requirements
@@ -604,7 +609,7 @@ data/subject_name/
 
 #### Methods
 
-##### `generate_graphs(segment_duration=180.0, start_time=None, stop_time=None, overlap_ratio=0.875, compute_node_features=True, compute_edge_features=True)`
+##### `generate_graphs(segment_duration=180.0, start_time=None, stop_time=None, overlap_ratio=0.875, compute_node_features=True, compute_edge_features=True, show_progress=True)`
 Creates comprehensive graph representations with adjacency matrices and node/edge features using **memory-safe HDF5 format** with segmented processing.
 
 **Features Generated:**
@@ -620,6 +625,20 @@ Creates comprehensive graph representations with adjacency matrices and node/edg
 - **Progress tracking**: Real-time progress bars and detailed logging
 - **HDF5 format**: Compressed, efficient storage with selective data access
 
+**Progress Bar Information:**
+The progress bar displays segment-by-segment processing status with the format:
+```
+Processing EEG segments: 45%|████████████▌                     | 9/20 [01:23<01:42, 6.4segment/s]
+```
+- **Percentage**: Overall completion (45%)
+- **Visual bar**: Progress visualization
+- **Current/Total**: Segments processed (9 out of 20)
+- **Elapsed time**: Time spent so far (1:23)
+- **Estimated remaining**: Time left (1:42)
+- **Processing rate**: Segments per second (6.4 segment/s)
+
+This helps track progress for long-running analyses and estimate completion time. Set `show_progress=False` to disable when running in automated scripts or to avoid conflicts with external progress bars.
+
 **Parameters:**
 - `segment_duration` (float): Duration of each processing segment in seconds (default: 180.0)
 - `start_time` (float, optional): Start time for analysis window in seconds
@@ -627,6 +646,7 @@ Creates comprehensive graph representations with adjacency matrices and node/edg
 - `overlap_ratio` (float): Window overlap ratio (default: 0.875 = 87.5% overlap)
 - `compute_node_features` (bool): Whether to compute node features (energy, band energy). Set to False to skip expensive node feature computation for performance optimization (default: True)
 - `compute_edge_features` (bool): Whether to compute edge features (correlation, coherence, phase). Set to False to skip expensive edge feature computation for performance optimization (default: True)
+- `show_progress` (bool): Whether to display progress bar during processing. Set to False to disable progress display and avoid conflicts with external progress bars (default: True)
 
 ```python
 # Generate comprehensive graph representations (default behavior)
@@ -652,6 +672,12 @@ hdf5_path, adj_matrices = processor.generate_graphs(
 hdf5_path, adj_matrices = processor.generate_graphs(
     segment_duration=180.0,
     compute_edge_features=False   # Keep node features, skip edge features
+)
+
+# Disable progress bar for automated scripts or to avoid tqdm conflicts
+hdf5_path, adj_matrices = processor.generate_graphs(
+    segment_duration=180.0,
+    show_progress=False  # No progress bar output
 )
 # Output: graphs/{filename}_graphs.h5 with compressed graph data
 ```
@@ -1004,6 +1030,7 @@ with h5py.File(hdf5_path, 'r') as f:
 - **Full features** (default): Complete analysis with all node and edge features
 - **Adjacency-only** (`compute_node_features=False, compute_edge_features=False`): Up to 70% faster, use when only connectivity matrices are needed
 - **Partial optimization**: Skip specific feature types based on analysis requirements
+- **Progress control** (`show_progress=False`): Disable progress bar for automated scripts or to avoid tqdm conflicts
 
 #### Complete Analysis Example
 ```python
@@ -1175,6 +1202,7 @@ hdf5_path, adj_matrices = processor.generate_graphs(
 - Adjacency matrices are **always computed** regardless of feature settings
 - HDF5 file structure adapts automatically - only computed features are stored
 - Backward compatibility maintained - existing code works unchanged
+- Progress bar can be disabled with `show_progress=False` for automated scripts or to avoid tqdm conflicts
 
 ### HDF5 Data Access Patterns
 
@@ -1258,6 +1286,203 @@ MIT License
 
 For questions or issues, please contact the package maintainer.
 #
+### ConnectivityReader
+
+Reader for ConnectivityAnalyzer results, providing methods for loading connectivity analysis data from files created by ConnectivityAnalyzer. Supports both HDF5 files (from `generate_graphs()`) and pickle files (from `compute_correlation()`, `compute_coherence_*()` methods) with automatic format detection.
+
+#### Initialization
+
+```python
+from krembil_kit import ConnectivityReader
+
+# Initialize reader (no parameters required)
+reader = ConnectivityReader()
+```
+
+#### Methods
+
+##### `load_correlation_matrices(file_path, time_range=None)`
+Load correlation matrices from pickle or HDF5 file with automatic format detection.
+
+```python
+# Load from pickle file
+data = reader.load_correlation_matrices("results/correlation/subject_correlation_0s-300s.pickle")
+
+# Load from HDF5 file
+data = reader.load_correlation_matrices("results/graphs/subject_graphs.h5")
+
+# Load with time filtering
+data = reader.load_correlation_matrices("results/graphs/subject_graphs.h5", time_range=(100, 200))
+
+# Access the data
+correlation_matrices = data['matrices']  # Shape: (n_windows, n_channels, n_channels)
+window_times = data['window_times']      # Window start times in seconds
+source_format = data['source_format']   # 'pickle' or 'hdf5'
+```
+
+**Parameters:**
+- `file_path` (str or Path): Path to pickle or HDF5 file
+- `time_range` (tuple of float, optional): Time range as (start_seconds, end_seconds) to filter windows
+
+**Returns:** Dictionary with 'matrices', 'window_times', 'file_path', and 'source_format'
+
+##### `load_coherence_matrices(file_path, time_range=None)`
+Load coherence matrices from pickle or HDF5 file with automatic format detection.
+
+```python
+# Load from pickle file
+data = reader.load_coherence_matrices("results/coherence/average/subject_coherence_avg_0s-300s.pickle")
+
+# Load from HDF5 file with time filtering
+data = reader.load_coherence_matrices("results/graphs/subject_graphs.h5", time_range=(50, 150))
+
+coherence_matrices = data['matrices']
+```
+
+**Parameters:**
+- `file_path` (str or Path): Path to pickle or HDF5 file
+- `time_range` (tuple of float, optional): Time range as (start_seconds, end_seconds) to filter windows
+
+**Returns:** Dictionary with 'matrices', 'window_times', 'file_path', and 'source_format'
+
+##### `load_coherence_by_frequency_bands(pickle_file_path, time_range=None)`
+Load frequency-band specific coherence matrices from pickle file.
+
+```python
+# Load frequency-band coherence data
+data = reader.load_coherence_by_frequency_bands("results/coherence/bands/subject_coherence_bands_0s-300s.pickle")
+
+# Access specific frequency bands
+alpha_coherence = data['coherence_by_band']['alpha']
+beta_coherence = data['coherence_by_band']['beta']
+print("Available bands:", list(data['coherence_by_band'].keys()))
+# Output: ['delta', 'theta', 'alpha', 'beta', 'gamma', 'gammaHi', ...]
+
+# Get frequency band definitions
+freq_bands = data['frequency_bands']
+print(f"Alpha band: {freq_bands['alpha']} Hz")  # (8, 13)
+```
+
+**Parameters:**
+- `pickle_file_path` (str or Path): Path to pickle file from compute_coherence_bands()
+- `time_range` (tuple of float, optional): Time range to filter windows
+
+**Returns:** Dictionary with 'coherence_by_band', 'frequency_bands', 'window_times', and 'file_path'
+
+##### `load_phase_matrices(hdf5_file_path, time_range=None)`
+Load phase matrices from HDF5 file (only available in HDF5 format).
+
+```python
+# Load phase matrices
+data = reader.load_phase_matrices("results/graphs/subject_graphs.h5")
+phase_matrices = data['matrices']
+window_times = data['window_times']
+
+# Load with time filtering
+data = reader.load_phase_matrices("results/graphs/subject_graphs.h5", time_range=(0, 100))
+```
+
+**Parameters:**
+- `hdf5_file_path` (str or Path): Path to HDF5 file from generate_graphs()
+- `time_range` (tuple of float, optional): Time range to filter windows
+
+**Returns:** Dictionary with 'matrices', 'window_times', and 'file_path'
+
+##### `load_adjacency_matrices(hdf5_file_path, time_range=None, matrix_types=None)`
+Load adjacency matrices from HDF5 file with optional filtering.
+
+```python
+# Load all adjacency matrix types
+data = reader.load_adjacency_matrices("results/graphs/subject_graphs.h5")
+adj_matrices = data['adjacency_matrices']  # Shape: (n_windows, 4, n_channels, n_channels)
+matrix_names = data['matrix_type_names']   # ['ones', 'correlation', 'coherence', 'phase']
+
+# Extract specific matrix types
+correlation_matrices = adj_matrices[:, 1, :, :]  # Index 1 = correlation
+coherence_matrices = adj_matrices[:, 2, :, :]    # Index 2 = coherence
+
+# Load only specific matrix types
+data = reader.load_adjacency_matrices("results/graphs/subject_graphs.h5", 
+                                     matrix_types=['correlation', 'coherence'])
+print(data['matrix_type_names'])  # ['correlation', 'coherence']
+```
+
+**Parameters:**
+- `hdf5_file_path` (str or Path): Path to HDF5 file from generate_graphs()
+- `time_range` (tuple of float, optional): Time range to filter windows
+- `matrix_types` (list of str, optional): Matrix types to include: ['ones', 'correlation', 'coherence', 'phase']
+
+**Returns:** Dictionary with 'adjacency_matrices', 'matrix_type_names', 'window_times', and 'file_path'
+
+**Matrix Types:**
+- Index 0: Ones matrix (fully connected baseline)
+- Index 1: Correlation matrix (Pearson correlation coefficients)
+- Index 2: Coherence matrix (frequency-averaged spectral connectivity)
+- Index 3: Phase matrix (phase-based coupling measures)
+
+##### `load_graph_features(hdf5_file_path, time_range=None)`
+Load complete graph data including adjacency matrices and node/edge features.
+
+```python
+# Load complete graph data
+data = reader.load_graph_features("results/graphs/subject_graphs.h5")
+
+adj_matrices = data['adjacency_matrices']
+metadata = data['metadata']
+
+# Check if features are available
+if data['has_node_features']:
+    node_features = data['node_features']
+    
+if data['has_edge_features']:
+    edge_features = data['edge_features']
+
+print(f"Loaded {len(data['window_times'])} time windows")
+```
+
+**Parameters:**
+- `hdf5_file_path` (str or Path): Path to HDF5 file from generate_graphs()
+- `time_range` (tuple of float, optional): Time range to filter windows
+
+**Returns:** Dictionary with 'adjacency_matrices', 'node_features', 'edge_features', 'window_times', 'metadata', 'file_path', 'has_node_features', and 'has_edge_features'
+
+#### Complete Usage Example
+
+```python
+from krembil_kit import ConnectivityReader
+
+# Initialize reader
+reader = ConnectivityReader()
+
+# Load correlation data from different sources
+correlation_pickle = reader.load_correlation_matrices("results/correlation/subject_correlation_0s-300s.pickle")
+correlation_hdf5 = reader.load_correlation_matrices("results/graphs/subject_graphs.h5")
+
+print(f"Pickle data: {correlation_pickle['matrices'].shape}")
+print(f"HDF5 data: {correlation_hdf5['matrices'].shape}")
+
+# Load coherence data
+coherence_data = reader.load_coherence_matrices("results/coherence/average/subject_coherence_avg_0s-300s.pickle")
+
+# Load frequency-band specific coherence
+bands_data = reader.load_coherence_by_frequency_bands("results/coherence/bands/subject_coherence_bands_0s-300s.pickle")
+alpha_coherence = bands_data['coherence_by_band']['alpha']
+
+# Load adjacency matrices with filtering
+adj_data = reader.load_adjacency_matrices("results/graphs/subject_graphs.h5", 
+                                         time_range=(100, 200),
+                                         matrix_types=['correlation', 'coherence'])
+
+# Load complete graph features
+graph_data = reader.load_graph_features("results/graphs/subject_graphs.h5")
+if graph_data['has_node_features']:
+    print("Node features available")
+
+# Time filtering works with all methods
+recent_correlation = reader.load_correlation_matrices("results/graphs/subject_graphs.h5", 
+                                                     time_range=(100, 200))
+```
+
 # Analysis Metadata and Reproducibility
 
 Both SpectralAnalyzer and ConnectivityAnalyzer automatically track comprehensive metadata for all analyses.
