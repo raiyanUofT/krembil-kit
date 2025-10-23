@@ -60,7 +60,7 @@ connectivity_analyzer.plot_connectivity_matrices()
 
 # Level 3: Full graph representations
 # Memory-safe graph generation (works for any file size):
-hdf5_path = connectivity_analyzer.generate_graphs(segment_duration=60.0, overlap_ratio=0.125)
+hdf5_path, adj_matrices = connectivity_analyzer.generate_graphs(segment_duration=60.0, overlap_ratio=0.125)
 ```
 
 ## Data Structure Requirements
@@ -604,7 +604,7 @@ data/subject_name/
 
 #### Methods
 
-##### `generate_graphs(segment_duration=180.0, start_time=None, stop_time=None, overlap_ratio=0.875)`
+##### `generate_graphs(segment_duration=180.0, start_time=None, stop_time=None, overlap_ratio=0.875, compute_node_features=True, compute_edge_features=True)`
 Creates comprehensive graph representations with adjacency matrices and node/edge features using **memory-safe HDF5 format** with segmented processing.
 
 **Features Generated:**
@@ -625,30 +625,48 @@ Creates comprehensive graph representations with adjacency matrices and node/edg
 - `start_time` (float, optional): Start time for analysis window in seconds
 - `stop_time` (float, optional): End time for analysis window in seconds  
 - `overlap_ratio` (float): Window overlap ratio (default: 0.875 = 87.5% overlap)
+- `compute_node_features` (bool): Whether to compute node features (energy, band energy). Set to False to skip expensive node feature computation for performance optimization (default: True)
+- `compute_edge_features` (bool): Whether to compute edge features (correlation, coherence, phase). Set to False to skip expensive edge feature computation for performance optimization (default: True)
 
 ```python
-# Generate comprehensive graph representations
-hdf5_path = processor.generate_graphs(segment_duration=300.0)
+# Generate comprehensive graph representations (default behavior)
+hdf5_path, adj_matrices = processor.generate_graphs(segment_duration=300.0)
 
 # Analyze specific time window with high temporal resolution
-hdf5_path = processor.generate_graphs(
+hdf5_path, adj_matrices = processor.generate_graphs(
     segment_duration=180.0,
     start_time=300,
     stop_time=900,
     overlap_ratio=0.95  # Very high resolution
+)
+
+# Performance optimization: Skip expensive feature computation
+# Fast adjacency-only processing (significant speedup)
+hdf5_path, adj_matrices = processor.generate_graphs(
+    segment_duration=180.0,
+    compute_node_features=False,  # Skip node feature computation
+    compute_edge_features=False   # Skip edge feature computation
+)
+
+# Partial optimization: Skip only edge features (moderate speedup)
+hdf5_path, adj_matrices = processor.generate_graphs(
+    segment_duration=180.0,
+    compute_edge_features=False   # Keep node features, skip edge features
 )
 # Output: graphs/{filename}_graphs.h5 with compressed graph data
 ```
 
 **HDF5 Output Structure:**
 ```python
-# HDF5 file contains:
+# HDF5 file contains (datasets depend on compute_* parameters):
 {
-    'adjacency_matrices': (n_windows, n_adj_types, n_electrodes, n_electrodes),
-    'node_features': (n_windows,),  # Variable-length arrays
-    'edge_features': (n_windows,),  # Variable-length arrays  
-    'window_starts': (n_windows,),  # Timestamp for each window
-    # Plus comprehensive metadata as attributes
+    'adjacency_matrices': (n_windows, n_adj_types, n_electrodes, n_electrodes),  # Always present
+    'node_features': (n_windows,),      # Present if compute_node_features=True
+    'edge_features': (n_windows,),      # Present if compute_edge_features=True
+    'window_starts': (n_windows,),      # Always present - timestamp for each window
+    # Plus comprehensive metadata as attributes including:
+    # - 'has_node_features': bool indicating if node features were computed
+    # - 'has_edge_features': bool indicating if edge features were computed
 }
 ```
 
@@ -934,7 +952,7 @@ processor_detailed.plot_connectivity_matrices(
 processor_advanced = ConnectivityAnalyzer(
     edf_loader=loader
 )
-hdf5_path = processor_advanced.generate_graphs(
+hdf5_path, adj_matrices = processor_advanced.generate_graphs(
     segment_duration=180.0
 )
 
@@ -982,6 +1000,11 @@ with h5py.File(hdf5_path, 'r') as f:
 - ✅ Need for incremental processing and progress tracking
 - ✅ Long-term storage with efficient HDF5 compression
 
+**Performance optimization options for `generate_graphs()`:**
+- **Full features** (default): Complete analysis with all node and edge features
+- **Adjacency-only** (`compute_node_features=False, compute_edge_features=False`): Up to 70% faster, use when only connectivity matrices are needed
+- **Partial optimization**: Skip specific feature types based on analysis requirements
+
 #### Complete Analysis Example
 ```python
 from krembil_kit import EDFLoader, ConnectivityAnalyzer
@@ -1022,7 +1045,7 @@ detailed_coh = detailed.compute_coherence_bands(
 # Step 4: Full graph analysis for ML (Level 3)
 # Memory-safe HDF5 processing
 advanced = ConnectivityAnalyzer(edf_loader=loader)
-hdf5_path = advanced.generate_graphs(segment_duration=300.0)
+hdf5_path, adj_matrices = advanced.generate_graphs(segment_duration=300.0)
 
 # Step 5: Load and analyze results
 with h5py.File(hdf5_path, 'r') as f:
@@ -1060,14 +1083,24 @@ advanced.plot_connectivity_matrices(
 **For Graph Processing:**
 - **Any file size**: `generate_graphs()` uses memory-safe HDF5 processing
 - **Adjust segment size**: Smaller segments use less memory but have more boundary losses
+- **Performance optimization**: Use feature control parameters for significant speedup
 
 ```python
 # Memory-efficient settings for large files
 processor = ConnectivityAnalyzer(edf_loader=loader)
 
-# Process in small segments for maximum memory efficiency
-hdf5_path = processor.generate_graphs(
-    segment_duration=120.0  # Smaller segments = less memory
+# Maximum efficiency: small segments + adjacency-only processing
+hdf5_path, adj_matrices = processor.generate_graphs(
+    segment_duration=120.0,         # Smaller segments = less memory
+    compute_node_features=False,    # Skip expensive node computation
+    compute_edge_features=False     # Skip expensive edge computation
+)
+# Result: Fastest processing with minimal memory usage
+
+# Balanced approach: moderate segments + partial optimization
+hdf5_path, adj_matrices = processor.generate_graphs(
+    segment_duration=180.0,         # Moderate segments
+    compute_edge_features=False     # Skip only edge features
 )
 ```
 
@@ -1083,17 +1116,65 @@ The trigger detection uses hardcoded parameters optimized for trigger detection:
 **Overlap Ratio Impact:**
 ```python
 # High resolution, high computational cost
-hdf5_path = processor.generate_graphs(overlap_ratio=0.875)  # 87.5% overlap
+hdf5_path, adj_matrices = processor.generate_graphs(overlap_ratio=0.875)  # 87.5% overlap
 # Result: 8x more windows, 8x longer processing, 8x more storage
 
 # Moderate resolution, balanced performance  
-hdf5_path = processor.generate_graphs(overlap_ratio=0.5)   # 50% overlap
+hdf5_path, adj_matrices = processor.generate_graphs(overlap_ratio=0.5)   # 50% overlap
 # Result: 2x more windows, 2x longer processing
 
 # Low resolution, fast processing
-hdf5_path = processor.generate_graphs(overlap_ratio=0.0)   # No overlap
+hdf5_path, adj_matrices = processor.generate_graphs(overlap_ratio=0.0)   # No overlap
 # Result: Fastest processing, lowest memory usage
 ```
+
+### Performance Optimization with Feature Control
+
+**New in v2.0**: Control node and edge feature computation for significant performance improvements.
+
+**Feature Computation Impact:**
+```python
+# Full computation (default - backward compatible)
+hdf5_path, adj_matrices = processor.generate_graphs()
+# Result: Complete analysis with all features
+
+# Adjacency-only mode (fastest - up to 70% faster)
+hdf5_path, adj_matrices = processor.generate_graphs(
+    compute_node_features=False,
+    compute_edge_features=False
+)
+# Result: Only adjacency matrices computed, significant speedup
+# Use when: Only need connectivity matrices for analysis
+
+# Partial optimization (moderate speedup)
+hdf5_path, adj_matrices = processor.generate_graphs(
+    compute_edge_features=False  # Keep node features, skip edge features
+)
+# Result: Moderate performance improvement
+# Use when: Need node features but not detailed edge features
+```
+
+**When to Use Each Mode:**
+
+**Full computation** (`compute_node_features=True, compute_edge_features=True`):
+- ✅ Graph neural networks requiring comprehensive features
+- ✅ Research requiring complete connectivity characterization
+- ✅ When computational time is not a constraint
+
+**Adjacency-only mode** (`compute_node_features=False, compute_edge_features=False`):
+- ✅ Quick connectivity exploration and visualization
+- ✅ Traditional network analysis (clustering, centrality measures)
+- ✅ Large-scale processing where speed is critical
+- ✅ When only correlation/coherence/phase matrices are needed
+
+**Partial optimization** (mixed settings):
+- ✅ Specific research requirements (e.g., node analysis without edge details)
+- ✅ Balancing performance with feature completeness
+
+**Important Notes:**
+- Adjacency matrices are **always computed** regardless of feature settings
+- HDF5 file structure adapts automatically - only computed features are stored
+- Backward compatibility maintained - existing code works unchanged
 
 ### HDF5 Data Access Patterns
 

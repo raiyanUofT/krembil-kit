@@ -558,7 +558,9 @@ def _stream_and_compute(
     adj_stop: int,
     sfreq: float,
     i: int,
-    last_step: int
+    last_step: int,
+    compute_node_features: bool = True,
+    compute_edge_features: bool = True
 ):
     """Reopen EDF in each worker, grab two small slices, run graph logic."""
     raw = mne.io.read_raw_edf(edf_path, preload=False, verbose=False)
@@ -566,27 +568,32 @@ def _stream_and_compute(
     x_adj  = raw.get_data(start=adj_start,  stop=adj_stop)
 
     adj_matrices = generate_adjacency_matrices(x_adj, sfreq)
-    node_feats, edge_feats = generate_node_and_edge_features(x_feat, sfreq)
+    
+    # Conditionally compute features
+    if compute_node_features or compute_edge_features:
+        node_feats, edge_feats = generate_node_and_edge_features(x_feat, sfreq)
+        if not compute_node_features:
+            node_feats = None
+        if not compute_edge_features:
+            edge_feats = None
+    else:
+        node_feats, edge_feats = None, None
+    
     return adj_matrices, node_feats, edge_feats
 
 # ── HDF5 Helper Functions ──────────────────────────────────────────────────
 
-def _create_hdf5_datasets(h5_file, n_electrodes: int, n_adj_types: int = 4, 
-                         n_node_features: int = None, n_edge_features: int = None):
+def _create_hdf5_datasets(h5_file, n_electrodes: int, compute_node_features: bool = True, 
+                         compute_edge_features: bool = True, n_adj_types: int = 4):
     """
     Create expandable HDF5 datasets for graph representation data.
     
     :param h5_file: Open HDF5 file handle
     :param n_electrodes: Number of electrodes/channels
+    :param compute_node_features: Whether to create node features dataset
+    :param compute_edge_features: Whether to create edge features dataset
     :param n_adj_types: Number of adjacency matrix types (default: 4)
-    :param n_node_features: Number of node feature types (estimated if None)
-    :param n_edge_features: Number of edge feature types (estimated if None)
     """
-    # Estimate feature dimensions if not provided
-    if n_node_features is None:
-        n_node_features = 3  # ones, energy, band_energy
-    if n_edge_features is None:
-        n_edge_features = 4  # ones, corr, coh, phase (simplified estimate)
     
     # Create expandable datasets with chunking for efficient I/O
     chunk_size = min(100, 10)  # Reasonable chunk size for I/O efficiency
@@ -603,27 +610,29 @@ def _create_hdf5_datasets(h5_file, n_electrodes: int, n_adj_types: int = 4,
         dtype=np.float32
     )
     
-    # Node features: (n_windows, n_electrodes, n_node_features) - variable last dim
-    h5_file.create_dataset(
-        'node_features',
-        shape=(0,),
-        maxshape=(None,),
-        chunks=(chunk_size,),
-        compression='gzip',
-        compression_opts=6,
-        dtype=h5py.special_dtype(vlen=np.float32)  # Variable length for different feature sizes
-    )
+    # Conditionally create node features dataset
+    if compute_node_features:
+        h5_file.create_dataset(
+            'node_features',
+            shape=(0,),
+            maxshape=(None,),
+            chunks=(chunk_size,),
+            compression='gzip',
+            compression_opts=6,
+            dtype=h5py.special_dtype(vlen=np.float32)  # Variable length for different feature sizes
+        )
     
-    # Edge features: (n_windows, n_electrodes, n_electrodes, n_edge_features) - variable last dim
-    h5_file.create_dataset(
-        'edge_features',
-        shape=(0,),
-        maxshape=(None,),
-        chunks=(chunk_size,),
-        compression='gzip',
-        compression_opts=6,
-        dtype=h5py.special_dtype(vlen=np.float32)  # Variable length for different feature sizes
-    )
+    # Conditionally create edge features dataset
+    if compute_edge_features:
+        h5_file.create_dataset(
+            'edge_features',
+            shape=(0,),
+            maxshape=(None,),
+            chunks=(chunk_size,),
+            compression='gzip',
+            compression_opts=6,
+            dtype=h5py.special_dtype(vlen=np.float32)  # Variable length for different feature sizes
+        )
     
     # Metadata
     h5_file.create_dataset(
@@ -637,6 +646,8 @@ def _create_hdf5_datasets(h5_file, n_electrodes: int, n_adj_types: int = 4,
     # Store processing parameters as attributes
     h5_file.attrs['n_electrodes'] = n_electrodes
     h5_file.attrs['n_adj_types'] = n_adj_types
+    h5_file.attrs['has_node_features'] = compute_node_features
+    h5_file.attrs['has_edge_features'] = compute_edge_features
 
 def _append_to_hdf5(h5_file, adj_matrices_list, node_features_list, 
                    edge_features_list, window_starts_list):
@@ -662,8 +673,10 @@ def _append_to_hdf5(h5_file, adj_matrices_list, node_features_list,
                                          h5_file['adjacency_matrices'].shape[1],
                                          h5_file['adjacency_matrices'].shape[2],
                                          h5_file['adjacency_matrices'].shape[3]))
-    h5_file['node_features'].resize((new_size,))
-    h5_file['edge_features'].resize((new_size,))
+    if 'node_features' in h5_file:
+        h5_file['node_features'].resize((new_size,))
+    if 'edge_features' in h5_file:
+        h5_file['edge_features'].resize((new_size,))
     h5_file['window_starts'].resize((new_size,))
     
     # Convert lists to arrays for adjacency matrices
@@ -673,19 +686,22 @@ def _append_to_hdf5(h5_file, adj_matrices_list, node_features_list,
     h5_file['adjacency_matrices'][current_size:new_size] = adj_array
     h5_file['window_starts'][current_size:new_size] = window_starts_list
     
-    # Handle variable-length node and edge features
+    # Handle variable-length node and edge features conditionally
     for i, (node_feat, edge_feat) in enumerate(zip(node_features_list, edge_features_list)):
-        # Flatten and store node features
-        node_flat = np.concatenate([feat.flatten() for feat in node_feat]).astype(np.float32)
-        h5_file['node_features'][current_size + i] = node_flat
+        # Store node features if dataset exists and features are not None
+        if 'node_features' in h5_file and node_feat is not None:
+            node_flat = np.concatenate([feat.flatten() for feat in node_feat]).astype(np.float32)
+            h5_file['node_features'][current_size + i] = node_flat
         
-        # Flatten and store edge features  
-        edge_flat = np.concatenate([feat.flatten() for feat in edge_feat]).astype(np.float32)
-        h5_file['edge_features'][current_size + i] = edge_flat
+        # Store edge features if dataset exists and features are not None
+        if 'edge_features' in h5_file and edge_feat is not None:
+            edge_flat = np.concatenate([feat.flatten() for feat in edge_feat]).astype(np.float32)
+            h5_file['edge_features'][current_size + i] = edge_flat
 
 def _process_segment_windows(edf_path: str, segment_start_samp: int, segment_stop_samp: int,
                            window_size: int, adj_window_size: int, window_step: int, 
-                           sfreq: float) -> tuple:
+                           sfreq: float, compute_node_features: bool = True, 
+                           compute_edge_features: bool = True) -> tuple:
     """
     Process all windows within a single segment.
     
@@ -716,7 +732,7 @@ def _process_segment_windows(edf_path: str, segment_start_samp: int, segment_sto
             adj_stop = i + half_adj
             
             tasks.append((edf_path, feat_start, feat_stop, adj_start, adj_stop, 
-                         sfreq, i, end_pos))
+                         sfreq, i, end_pos, compute_node_features, compute_edge_features))
             window_starts.append(i / sfreq)  # Convert to seconds
     
     if not tasks:
@@ -822,28 +838,25 @@ class ConnectivityAnalyzer:
     
     def generate_graphs(self, segment_duration: float = 180.0, 
                        start_time: float = None, stop_time: float = None,
-                       overlap_ratio: float = 0.875) -> Tuple[Path, np.ndarray]:
+                       overlap_ratio: float = 0.875,
+                       compute_node_features: bool = True,
+                       compute_edge_features: bool = True,
+                       show_progress: bool = True) -> Tuple[Path, np.ndarray]:
         """
-        Execute comprehensive graph-based connectivity analysis from EEG data with memory-efficient processing.
-        
         Implements a robust pipeline for large-scale connectivity analysis by segmenting
         EEG recordings into manageable chunks and computing multi-modal graph representations:
         
         **Adjacency Matrix Computation**: Generates connectivity matrices using multiple
-        metrics (correlation, coherence, phase) to capture different aspects of neural
-        coupling across frequency bands and temporal scales.
+        metrics (correlation, coherence, phase).
         
         **Node Feature Extraction**: Computes electrode-specific features including
-        signal energy, frequency-band power distributions, and spectral characteristics
-        for comprehensive network node characterization.
+        signal energy, frequency-band power distributions, and spectral characteristics.
         
         **Edge Feature Analysis**: Quantifies pairwise connectivity properties with
         multi-dimensional edge features capturing temporal dynamics and frequency-specific
         coupling patterns between electrode pairs.
         
-        The analysis employs overlapping temporal windows for high-resolution connectivity
-        tracking while maintaining statistical robustness through extended adjacency
-        computation windows. Memory usage remains bounded regardless of input file size.
+        Memory usage remains bounded regardless of input file size.
         
         Parameters
         ----------
@@ -852,14 +865,21 @@ class ConnectivityAnalyzer:
             usage but may decrease computational efficiency. Valid range: 6.0 to 3600.0 seconds.
         start_time : float, optional
             Start time in seconds for analysis window. If None, begins from file start.
-            Enables targeted analysis of specific recording periods.
         stop_time : float, optional
             End time in seconds for analysis window. If None, processes until file end.
-            Combined with start_time for precise temporal range selection.
         overlap_ratio : float, default=0.875
             Overlap fraction between consecutive analysis windows (0.875 = 87.5% overlap).
             Higher values increase temporal sampling density and smoothness but require
             more computational resources. Range: 0.0 (no overlap) to 0.95 (maximum overlap).
+        compute_node_features : bool, default=True
+            Whether to compute node features (energy, band energy). Set to False to skip
+            expensive node feature computation.
+        compute_edge_features : bool, default=True
+            Whether to compute edge features (correlation, coherence, phase). Set to False
+            to skip expensive edge feature computation.
+        show_progress : bool, default=True
+            Whether to display progress bar during processing. Set to False to disable
+            progress display.
         
         Returns
         -------
@@ -973,7 +993,7 @@ class ConnectivityAnalyzer:
         
         with h5py.File(hdf5_path, 'w') as h5_file:
             # Initialize expandable datasets
-            _create_hdf5_datasets(h5_file, n_electrodes)
+            _create_hdf5_datasets(h5_file, n_electrodes, compute_node_features, compute_edge_features)
             
             # Store processing metadata
             h5_file.attrs['edf_file_path'] = str(self.edf_loader.edf_file_path)
@@ -990,13 +1010,20 @@ class ConnectivityAnalyzer:
             h5_file.attrs['overlap_ratio'] = overlap_ratio
             h5_file.attrs['window_step_ratio'] = window_step_ratio
             h5_file.attrs['window_step'] = window_step
+            h5_file.attrs['compute_node_features'] = compute_node_features
+            h5_file.attrs['compute_edge_features'] = compute_edge_features
             
             total_windows_processed = 0
             
-            # Process each segment with progress tracking
-            pbar = tqdm(range(n_segments), desc="Processing EEG segments", unit="segment")
+            # Process each segment with optional progress tracking
+            if show_progress:
+                pbar = tqdm(range(n_segments), desc="Processing EEG segments", unit="segment")
+                segments = pbar
+            else:
+                segments = range(n_segments)
+                pbar = None
             
-            for segment_idx in pbar:
+            for segment_idx in segments:
                 # Calculate segment times relative to the processing start time
                 segment_start_seconds = actual_start_time + (segment_idx * segment_duration_seconds)
                 segment_stop_seconds = min(segment_start_seconds + segment_duration_seconds, 
@@ -1018,7 +1045,9 @@ class ConnectivityAnalyzer:
                             self.window_size,
                             self.adj_window_size,
                             window_step,
-                            sfreq
+                            sfreq,
+                            compute_node_features,
+                            compute_edge_features
                         )
                     
                     n_windows = len(adj_matrices_list)
@@ -1047,7 +1076,8 @@ class ConnectivityAnalyzer:
                     continue
             
             # Close progress bar and store final statistics
-            pbar.close()
+            if pbar:
+                pbar.close()
             h5_file.attrs['total_windows_processed'] = total_windows_processed
         
         logger.info(f"✔ Complete graph representation saved to: {hdf5_path}")
@@ -1064,7 +1094,10 @@ class ConnectivityAnalyzer:
             "stop_time": stop_time,
             "overlap_ratio": overlap_ratio,
             "window_size": self.window_size,
-            "adj_window_size": self.adj_window_size
+            "adj_window_size": self.adj_window_size,
+            "compute_node_features": compute_node_features,
+            "compute_edge_features": compute_edge_features,
+            "show_progress": show_progress
         }
         results_info = {
             "file": hdf5_path.name,
